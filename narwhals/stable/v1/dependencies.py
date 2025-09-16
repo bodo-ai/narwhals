@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     import dask.dataframe as dd
     import ibis
     import modin.pandas as mpd
+    import bodo.pandas as bd
     import pandas as pd
     import polars as pl
     import pyarrow as pa
@@ -20,6 +21,7 @@ from narwhals.dependencies import (
     get_dask_dataframe,
     get_ibis,
     get_modin,
+    get_bodo_dataframes,
     get_numpy,
     get_pandas,
     get_polars,
@@ -60,6 +62,16 @@ def is_modin_dataframe(df: Any) -> TypeIs[mpd.DataFrame]:
 def is_modin_series(ser: Any) -> TypeIs[mpd.Series]:
     """Check whether `ser` is a modin Series without importing modin."""
     return (mpd := get_modin()) is not None and isinstance(ser, mpd.Series)
+
+
+def is_bodo_dataframe(df: Any) -> TypeIs[bd.DataFrame]:
+    """Check whether `df` is a modin DataFrame without importing modin."""
+    return (bd := get_bodo_dataframes()) is not None and isinstance(df, bd.DataFrame)
+
+
+def is_bodo_series(ser: Any) -> TypeIs[bd.Series]:
+    """Check whether `ser` is a modin Series without importing modin."""
+    return (bd := get_bodo_dataframes()) is not None and isinstance(ser, bd.Series)
 
 
 def is_cudf_dataframe(df: Any) -> TypeIs[cudf.DataFrame]:
@@ -112,7 +124,7 @@ def is_pandas_like_dataframe(df: Any) -> bool:
 
     By "pandas-like", we mean: pandas, Modin, cuDF.
     """
-    return is_pandas_dataframe(df) or is_modin_dataframe(df) or is_cudf_dataframe(df)
+    return is_pandas_dataframe(df) or is_modin_dataframe(df) or is_cudf_dataframe(df) or is_bodo_dataframe(df)
 
 
 def is_pandas_like_series(ser: Any) -> bool:
@@ -120,7 +132,7 @@ def is_pandas_like_series(ser: Any) -> bool:
 
     By "pandas-like", we mean: pandas, Modin, cuDF.
     """
-    return is_pandas_series(ser) or is_modin_series(ser) or is_cudf_series(ser)
+    return is_pandas_series(ser) or is_modin_series(ser) or is_cudf_series(ser) or is_bodo_series(ser)
 
 
 __all__ = [
@@ -139,6 +151,8 @@ __all__ = [
     "is_into_series",
     "is_modin_dataframe",
     "is_modin_series",
+    "is_bodo_dataframe",
+    "is_bodo_series",
     "is_narwhals_dataframe",
     "is_narwhals_lazyframe",
     "is_narwhals_series",

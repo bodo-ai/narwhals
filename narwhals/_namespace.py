@@ -18,10 +18,12 @@ from narwhals._utils import Implementation, Version
 from narwhals.dependencies import (
     get_cudf,
     get_modin,
+    get_bodo_dataframes,
     get_pandas,
     get_polars,
     get_pyarrow,
     is_dask_dataframe,
+    is_bodo_dataframe,
     is_duckdb_relation,
     is_ibis_table,
     is_pyspark_connect_dataframe,
@@ -41,6 +43,7 @@ if TYPE_CHECKING:
 
     from narwhals._arrow.namespace import ArrowNamespace
     from narwhals._dask.namespace import DaskNamespace
+    from narwhals._bodo.namespace import BodoNamespace
     from narwhals._duckdb.namespace import DuckDBNamespace
     from narwhals._ibis.namespace import IbisNamespace
     from narwhals._pandas_like.namespace import PandasLikeNamespace
@@ -51,6 +54,7 @@ if TYPE_CHECKING:
         Arrow,
         Backend,
         Dask,
+        Bodo,
         DuckDB,
         EagerAllowed,
         Ibis,
@@ -113,6 +117,12 @@ if TYPE_CHECKING:
     class _ModinSeries(_BasePandasLikeSeries, Protocol):
         _pandas_class: type[pd.Series[Any]]
 
+    class _BodoDataFrame(_BasePandasLikeFrame, Protocol):
+        _pandas_class: type[pd.DataFrame]
+
+    class _BodoSeries(_BasePandasLikeSeries, Protocol):
+        _pandas_class: type[pd.Series[Any]]
+
     # NOTE: Using `pyspark.sql.DataFrame` creates false positives in overloads when not installed
     class _PySparkDataFrame(NativeLazyFrame, Protocol):
         # Arbitrary method that `sqlframe` doesn't have and unlikely to appear anywhere else
@@ -124,10 +134,11 @@ if TYPE_CHECKING:
     _NativeDuckDB: TypeAlias = "duckdb.DuckDBPyRelation"
     _NativePandas: TypeAlias = "pd.DataFrame | pd.Series[Any]"
     _NativeModin: TypeAlias = "_ModinDataFrame | _ModinSeries"
+    _NativeBodo: TypeAlias = "_BodoDataFrame | _BodoSeries"
     _NativeCuDF: TypeAlias = "_CuDFDataFrame | _CuDFSeries"
-    _NativePandasLikeSeries: TypeAlias = "pd.Series[Any] | _CuDFSeries | _ModinSeries"
+    _NativePandasLikeSeries: TypeAlias = "pd.Series[Any] | _CuDFSeries | _ModinSeries | _BodoSeries"
     _NativePandasLikeDataFrame: TypeAlias = (
-        "pd.DataFrame | _CuDFDataFrame | _ModinDataFrame"
+        "pd.DataFrame | _CuDFDataFrame | _ModinDataFrame | _BodoDataFrame"
     )
     _NativePandasLike: TypeAlias = "_NativePandasLikeDataFrame |_NativePandasLikeSeries"
     _NativeSQLFrame: TypeAlias = "SQLFrameDataFrame"
@@ -137,7 +148,7 @@ if TYPE_CHECKING:
         "_NativeSQLFrame | _NativePySpark | _NativePySparkConnect"
     )
 
-    NativeKnown: TypeAlias = "_NativePolars | _NativeArrow | _NativePandasLike | _NativeSparkLike | _NativeDuckDB | _NativeDask | _NativeIbis"
+    NativeKnown: TypeAlias = "_NativePolars | _NativeArrow | _NativePandasLike | _NativeSparkLike | _NativeDuckDB | _NativeDask | _NativeIbis | _NativeBodo"
     NativeUnknown: TypeAlias = "NativeDataFrame | NativeSeries | NativeLazyFrame"
     NativeAny: TypeAlias = "NativeKnown | NativeUnknown"
 
@@ -201,6 +212,10 @@ class Namespace(Generic[CompliantNamespaceT_co]):
 
     @overload
     @classmethod
+    def from_backend(cls, backend: Bodo, /) -> Namespace[BodoNamespace]: ...
+
+    @overload
+    @classmethod
     def from_backend(cls, backend: Ibis, /) -> Namespace[IbisNamespace]: ...
 
     @overload
@@ -231,6 +246,7 @@ class Namespace(Generic[CompliantNamespaceT_co]):
         backend_version = impl._backend_version()  # noqa: F841
         version = cls._version
         ns: CompliantNamespaceAny
+        breakpoint()
         if impl.is_pandas_like():
             from narwhals._pandas_like.namespace import PandasLikeNamespace
 
@@ -256,6 +272,10 @@ class Namespace(Generic[CompliantNamespaceT_co]):
             from narwhals._dask.namespace import DaskNamespace
 
             ns = DaskNamespace(version=version)
+        elif impl.is_bodo():
+            from narwhals._bodo.namespace import BodoNamespace
+
+            ns = BodoNamespace(version=version)
         elif impl.is_ibis():
             from narwhals._ibis.namespace import IbisNamespace
 
@@ -332,6 +352,8 @@ class Namespace(Generic[CompliantNamespaceT_co]):
         impl: Backend
         if is_native_polars(native):
             impl = Implementation.POLARS
+        elif is_native_bodo(native):  # pragma: no cover
+            impl = Implementation.BODO
         elif is_native_pandas(native):
             impl = Implementation.PANDAS
         elif is_native_arrow(native):
@@ -391,6 +413,12 @@ def is_native_pandas(obj: Any) -> TypeIs[_NativePandas]:
 def is_native_modin(obj: Any) -> TypeIs[_NativeModin]:
     return (mpd := get_modin()) is not None and isinstance(
         obj, (mpd.DataFrame, mpd.Series)
+    )  # pragma: no cover
+
+
+def is_native_bodo(obj: Any) -> TypeIs[_NativeBodo]:
+    return (bd := get_bodo_dataframes()) is not None and isinstance(
+        obj, (bd.DataFrame, bd.Series)
     )  # pragma: no cover
 
 

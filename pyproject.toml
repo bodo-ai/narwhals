@@ -13,7 +13,7 @@ authors = [
 ]
 description = "Extremely lightweight compatibility layer between dataframe libraries"
 readme = "README.md"
-keywords = ["dataframes", "interoperability", "pandas", "polars", "pyarrow", "dask", "modin", "cudf"]
+keywords = ["dataframes", "interoperability", "pandas", "polars", "pyarrow", "dask", "modin", "cudf", "bodo"]
 classifiers = [
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python",
@@ -42,6 +42,7 @@ pyspark = ["pyspark>=3.5.0"]
 pyspark-connect = ["pyspark[connect]>=3.5.0"]
 polars = ["polars>=0.20.4"]
 dask = ["dask[dataframe]>=2024.8"]
+bodo = ["bodo>=2025.8.2"]
 duckdb = ["duckdb>=1.0"]
 ibis = ["ibis-framework>=6.0.0", "rich", "packaging", "pyarrow_hotfix"]
 sqlframe = ["sqlframe>=3.22.0,!=3.39.3"]
@@ -321,6 +322,7 @@ module = [
   "cupy.*",
   "dask.*",
   "dask_expr.*",
+  "bodo.*",
   "duckdb.*",
   # https://github.com/ibis-project/ibis/issues/6844
   "ibis.*",
@@ -342,6 +344,7 @@ module = [
   "narwhals._ibis.*",
   "narwhals._arrow.*",
   "narwhals._dask.*",
+  "narwhals._bodo.*",
   "narwhals._spark_like.*",
 ]
 warn_return_any = false

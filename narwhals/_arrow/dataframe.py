@@ -565,6 +565,17 @@ class ArrowDataFrame(
                 validate_backend_version=True,
                 version=self._version,
             )
+        if backend is Implementation.BODO:
+            import bodo.pandas as bd  # ignore-banned-import
+
+            from narwhals._bodo.dataframe import BodoLazyFrame
+            breakpoint()
+
+            return BodoLazyFrame(
+                bd.DataFrames(self.native.to_pandas()),
+                validate_backend_version=True,
+                version=self._version,
+            )
         if backend is Implementation.IBIS:
             import ibis  # ignore-banned-import
 

@@ -603,6 +603,7 @@ def read_csv(
         Implementation.PANDAS,
         Implementation.MODIN,
         Implementation.CUDF,
+        Implementation.BODO,
     }:
         native_frame = native_namespace.read_csv(source, **kwargs)
     elif impl is Implementation.PYARROW:
@@ -681,6 +682,7 @@ def scan_csv(
         Implementation.MODIN,
         Implementation.CUDF,
         Implementation.DASK,
+        Implementation.BODO,
         Implementation.DUCKDB,
         Implementation.IBIS,
     }:
@@ -759,6 +761,7 @@ def read_parquet(
         Implementation.PANDAS,
         Implementation.MODIN,
         Implementation.CUDF,
+        Implementation.BODO,
     }:
         native_frame = native_namespace.read_parquet(source, **kwargs)
     elif impl is Implementation.PYARROW:
@@ -866,6 +869,7 @@ def scan_parquet(
         Implementation.DASK,
         Implementation.DUCKDB,
         Implementation.IBIS,
+        Implementation.BODO,
     }:
         native_frame = native_namespace.read_parquet(source, **kwargs)
     elif implementation is Implementation.PYARROW:

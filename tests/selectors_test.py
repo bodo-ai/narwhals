@@ -85,6 +85,7 @@ def test_datetime(constructor: Constructor, request: pytest.FixtureRequest) -> N
         "pyspark" in str(constructor)
         or "duckdb" in str(constructor)
         or "dask" in str(constructor)
+        or "bodo" in str(constructor)
         or ("pyarrow" in str(constructor) and is_windows())
         or ("pandas" in str(constructor) and PANDAS_VERSION < (2,))
         or "ibis" in str(constructor)

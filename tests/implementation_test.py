@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         _IbisImpl,
         _LazyAllowedImpl,
         _ModinImpl,
+        _BodoImpl,
         _PandasImpl,
         _PolarsImpl,
         _SQLFrameImpl,
@@ -57,6 +58,7 @@ def test_implementation_polars() -> None:
     [
         ("PANDAS", "pandas"),
         ("MODIN", "modin"),
+        ("BODO", "bodo"),
         ("CUDF", "cudf"),
         ("PYARROW", "pyarrow"),
         ("PYSPARK", "pyspark"),
@@ -113,6 +115,7 @@ if TYPE_CHECKING:
     import duckdb
     import ibis
     import modin.pandas as mpd
+    import bodo.pandas as bd
     import pandas as pd
     import polars as pl
     import pyarrow as pa
@@ -261,6 +264,23 @@ if TYPE_CHECKING:
 
         assert_type(df_impl, _ModinImpl)
         assert_type(ser_impl, _ModinImpl)
+
+    def test_bodo_typing(native: bd.DataFrame) -> None:
+        df = nw.from_native(native)
+        # NOTE: Arbitrary method that returns a `Series`
+        ser = nw.from_native(native.duplicated(), series_only=True)
+
+        df_impl = df.implementation
+        ser_impl = ser.implementation
+
+        # [True Negative]
+        any_df.lazy(df_impl)  # pyright: ignore[reportArgumentType]
+        any_df.lazy(ser_impl)  # pyright: ignore[reportArgumentType]
+        any_ldf.collect(df_impl)  # pyright: ignore[reportArgumentType]
+        any_ldf.collect(ser_impl)  # pyright: ignore[reportArgumentType]
+
+        assert_type(df_impl, _BodoImpl)
+        assert_type(ser_impl, _BodoImpl)
 
     def test_any_typing() -> None:
         df_impl = any_df.implementation

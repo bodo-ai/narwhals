@@ -133,6 +133,8 @@ class PandasLikeDataFrame(
                     from_arrow as mpd_from_arrow,  # pyright: ignore[reportAttributeAccessIssue]
                 )
             native = mpd_from_arrow(tbl)
+        elif implementation.is_bodo():
+            native = implementation.to_native_namespace().from_arrow(tbl)
         elif implementation.is_cudf():  # pragma: no cover
             native = implementation.to_native_namespace().DataFrame.from_arrow(tbl)
         else:  # pragma: no cover
@@ -799,6 +801,16 @@ class PandasLikeDataFrame(
 
             return PolarsLazyFrame(
                 df=pl.from_pandas(pandas_df).lazy(),
+                validate_backend_version=True,
+                version=self._version,
+            )
+        if backend is Implementation.BODO:
+            import bodo.pandas as bd  # ignore-banned-import
+
+            from narwhals._bodo.dataframe import BodoLazyFrame
+
+            return BodoLazyFrame(
+                df=bd.DataFrame(pandas_df),
                 validate_backend_version=True,
                 version=self._version,
             )

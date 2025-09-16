@@ -207,6 +207,7 @@ def test_cast_datetime_tz_aware(
 ) -> None:
     if (
         "dask" in str(constructor)
+        or "bodo" in str(constructor)
         or "duckdb" in str(constructor)
         or "cudf" in str(constructor)  # https://github.com/rapidsai/cudf/issues/16973
         or ("pyarrow_table" in str(constructor) and is_windows())

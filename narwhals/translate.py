@@ -11,6 +11,7 @@ from narwhals._namespace import (
     is_native_pandas_like,
     is_native_polars,
     is_native_spark_like,
+    is_native_bodo,
 )
 from narwhals._utils import Implementation, Version, has_native_namespace
 from narwhals.dependencies import (
@@ -19,6 +20,9 @@ from narwhals.dependencies import (
     get_pandas,
     is_cupy_scalar,
     is_dask_dataframe,
+    is_bodo_dataframe,
+    is_bodo_lazyframe,
+    is_bodo_series,
     is_duckdb_relation,
     is_ibis_table,
     is_numpy_scalar,
@@ -398,6 +402,32 @@ def _from_native_impl(  # noqa: C901, PLR0911, PLR0912, PLR0915
                 raise TypeError(msg)
             return native_object
         if (not allow_series) and is_polars_series(native_object):
+            if not pass_through:
+                msg = "Please set `allow_series=True` or `series_only=True`"
+                raise TypeError(msg)
+            return native_object
+        return (
+            version.namespace.from_native_object(native_object)
+            .compliant.from_native(native_object)
+            .to_narwhals()
+        )
+
+    breakpoint()
+    # Bodo 
+    if is_native_bodo(native_object):
+        if series_only and not is_bodo_series(native_object):
+            if not pass_through:
+                msg = f"Cannot only use `series_only` with {type(native_object).__qualname__}"
+                raise TypeError(msg)
+            return native_object
+        if (eager_only or eager_or_interchange_only) and is_bodo_lazyframe(
+            native_object
+        ):
+            if not pass_through:
+                msg = "Cannot only use `eager_only` or `eager_or_interchange_only` with bodo.LazyFrame"
+                raise TypeError(msg)
+            return native_object
+        if (not allow_series) and is_bodo_series(native_object):
             if not pass_through:
                 msg = "Please set `allow_series=True` or `series_only=True`"
                 raise TypeError(msg)

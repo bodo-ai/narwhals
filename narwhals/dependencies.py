@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     import polars as pl
     import pyarrow as pa
     import pyspark.sql as pyspark_sql
+    import bodo.pandas as bd
     from pyspark.sql.connect.dataframe import DataFrame as PySparkConnectDataFrame
     from typing_extensions import TypeGuard, TypeIs
 
@@ -58,6 +59,13 @@ def get_modin() -> Any:  # pragma: no cover
     """Get modin.pandas module (if already imported - else return None)."""
     if (modin := sys.modules.get("modin", None)) is not None:
         return modin.pandas
+    return None
+
+
+def get_bodo_dataframes() -> Any:  # pragma: no cover
+    """Get bodo.pandas module (if already imported - else return None)."""
+    if (bodo := sys.modules.get("bodo", None)) is not None:
+        return bodo.pandas
     return None
 
 
@@ -208,6 +216,41 @@ def is_modin_series(ser: Any) -> TypeIs[mpd.Series]:
 def is_modin_index(index: Any) -> TypeIs[mpd.Index[Any]]:  # pragma: no cover
     """Check whether `index` is a modin Index without importing modin."""
     return (mpd := get_modin()) is not None and isinstance(index, mpd.Index)
+
+
+def is_bodo_dataframe(df: Any) -> TypeIs[bd.DataFrame]:
+    """Check whether `df` is a Bodo DataFrame without importing Bodo.
+
+    Warning:
+        This method cannot be called on a Narwhals DataFrame/LazyFrame.
+    """
+    _warn_if_narwhals_df_or_lf(df)
+    return (bd := get_bodo_dataframes()) is not None and isinstance(df, bd.DataFrame)
+
+
+def is_bodo_series(ser: Any) -> TypeIs[bd.Series]:
+    """Check whether `ser` is a Bodo Series without importing Bodo.
+
+    Warning:
+        This method cannot be called on Narwhals Series.
+    """
+    _warn_if_narwhals_series(ser)
+    return (bd := get_bodo_dataframes()) is not None and isinstance(ser, bd.Series)
+
+
+def is_bodo_index(index: Any) -> TypeIs[bd.Index[Any]]:  # pragma: no cover
+    """Check whether `index` is a Bodo Index without importing Bodo."""
+    return (mpd := get_bodo_dataframes()) is not None and isinstance(index, bd.Index)
+
+
+def is_bodo_lazyframe(df: Any) -> TypeIs[bd.DataFrame]:
+    """Check whether `df` is a Bodo LazyFrame without importing Bodo.
+
+    Warning:
+        This method cannot be called on Narwhals DataFrame/LazyFrame.
+    """
+    _warn_if_narwhals_df_or_lf(df)
+    return (bd := get_bodo_dataframes()) is not None and isinstance(df, bd.DataFrame)
 
 
 def is_cudf_dataframe(df: Any) -> TypeIs[cudf.DataFrame]:
@@ -600,6 +643,7 @@ __all__ = [
     "get_pandas",
     "get_polars",
     "get_pyarrow",
+    "get_bodo_dataframes",
     "is_cudf_dataframe",
     "is_cudf_series",
     "is_dask_dataframe",
@@ -608,6 +652,9 @@ __all__ = [
     "is_into_series",
     "is_modin_dataframe",
     "is_modin_series",
+    "is_bodo_dataframe",
+    "is_bodo_lazyframe",
+    "is_bodo_series",
     "is_narwhals_dataframe",
     "is_narwhals_lazyframe",
     "is_narwhals_series",

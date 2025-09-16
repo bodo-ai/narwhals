@@ -39,6 +39,7 @@ PANDAS_VERSION: tuple[int, ...] = get_module_version_as_tuple("pandas")
 DUCKDB_VERSION: tuple[int, ...] = get_module_version_as_tuple("duckdb")
 POLARS_VERSION: tuple[int, ...] = get_module_version_as_tuple("polars")
 DASK_VERSION: tuple[int, ...] = get_module_version_as_tuple("dask")
+BODO_VERSION: tuple[int, ...] = get_module_version_as_tuple("bodo")
 PYARROW_VERSION: tuple[int, ...] = get_module_version_as_tuple("pyarrow")
 PYSPARK_VERSION: tuple[int, ...] = get_module_version_as_tuple("pyspark")
 CUDF_VERSION: tuple[int, ...] = get_module_version_as_tuple("cudf")
@@ -49,7 +50,7 @@ ConstructorLazy: TypeAlias = Callable[[Any], "NativeLazyFrame"]
 ConstructorPandasLike: TypeAlias = Callable[[Any], "pd.DataFrame"]
 
 ID_PANDAS_LIKE = frozenset(
-    ("pandas", "pandas[nullable]", "pandas[pyarrow]", "modin", "modin[pyarrow]", "cudf")
+    ("pandas", "pandas[nullable]", "pandas[pyarrow]", "modin", "modin[pyarrow]", "cudf", "bodo")
 )
 ID_CUDF = frozenset(("cudf",))
 _CONSTRUCTOR_FIXTURE_NAMES = frozenset[str](
@@ -194,6 +195,18 @@ def maybe_get_modin_df(df_pandas: pd.DataFrame) -> Any:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UserWarning)
             return mpd.DataFrame(df_pandas.to_dict(orient="list"))
+
+
+def maybe_get_bodo_df(df_pandas: pd.DataFrame) -> Any:
+    """Convert a pandas DataFrame to a Bodo DataFrame if Bodo is available."""
+    try:
+        import bodo.pandas as bd
+    except ImportError:  # pragma: no cover
+        return df_pandas.copy()
+    else:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            return bd.DataFrame(df_pandas)
 
 
 def is_windows() -> bool:

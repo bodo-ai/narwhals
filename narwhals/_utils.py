@@ -30,6 +30,7 @@ from narwhals._typing_compat import assert_never, deprecated
 from narwhals.dependencies import (
     get_cudf,
     get_dask_dataframe,
+    get_bodo_dataframes,
     get_duckdb,
     get_ibis,
     get_modin,
@@ -78,6 +79,7 @@ if TYPE_CHECKING:
         _NativeArrow,
         _NativeCuDF,
         _NativeDask,
+        _NativeBodo,
         _NativeDuckDB,
         _NativeIbis,
         _NativeModin,
@@ -95,6 +97,7 @@ if TYPE_CHECKING:
         _ArrowImpl,
         _CuDFImpl,
         _DaskImpl,
+        _BodoImpl,
         _DuckDBImpl,
         _EagerAllowedImpl,
         _IbisImpl,
@@ -336,6 +339,8 @@ class Implementation(NoAutoEnum):
     """Polars implementation."""
     DASK = "dask"
     """Dask implementation."""
+    BODO = "bodo"
+    """Bodo implementation."""
     DUCKDB = "duckdb"
     """DuckDB implementation."""
     IBIS = "ibis"
@@ -362,6 +367,7 @@ class Implementation(NoAutoEnum):
         mapping = {
             get_pandas(): Implementation.PANDAS,
             get_modin(): Implementation.MODIN,
+            get_bodo_dataframes(): Implementation.BODO,
             get_cudf(): Implementation.CUDF,
             get_pyarrow(): Implementation.PYARROW,
             get_pyspark_sql(): Implementation.PYSPARK,
@@ -547,6 +553,19 @@ class Implementation(NoAutoEnum):
         """
         return self is Implementation.DASK  # pragma: no cover
 
+    def is_bodo(self) -> bool:
+        """Return whether implementation is Bodo.
+
+        Examples:
+            >>> import polars as pl
+            >>> import narwhals as nw
+            >>> df_native = pl.DataFrame({"a": [1, 2, 3]})
+            >>> df = nw.from_native(df_native)
+            >>> df.implementation.is_dask()
+            False
+        """
+        return self is Implementation.BODO  # pragma: no cover
+
     def is_duckdb(self) -> bool:
         """Return whether implementation is DuckDB.
 
@@ -600,6 +619,7 @@ MIN_VERSIONS: Mapping[Implementation, tuple[int, ...]] = {
     Implementation.PYSPARK_CONNECT: (3, 5),
     Implementation.POLARS: (0, 20, 4),
     Implementation.DASK: (2024, 8),
+    Implementation.BODO: (2025, 8, 2),
     Implementation.DUCKDB: (1,),
     Implementation.IBIS: (6,),
     Implementation.SQLFRAME: (3, 22, 0),
@@ -607,6 +627,7 @@ MIN_VERSIONS: Mapping[Implementation, tuple[int, ...]] = {
 
 _IMPLEMENTATION_TO_MODULE_NAME: Mapping[Implementation, str] = {
     Implementation.DASK: "dask.dataframe",
+    Implementation.BODO: "bodo.pandas",
     Implementation.MODIN: "modin.pandas",
     Implementation.PYSPARK: "pyspark.sql",
     Implementation.PYSPARK_CONNECT: "pyspark.sql.connect",
@@ -647,6 +668,10 @@ def backend_version(implementation: Implementation, /) -> tuple[int, ...]:
         import dask  # ignore-banned-import
 
         into_version = dask
+    elif impl.is_bodo():
+        import bodo  # ignore-banned-import
+
+        into_version = bodo
     else:
         into_version = native_namespace
     version = parse_version(into_version)
@@ -1678,6 +1703,7 @@ def is_eager_allowed(impl: Implementation, /) -> TypeIs[_EagerAllowedImpl]:
         Implementation.PANDAS,
         Implementation.POLARS,
         Implementation.PYARROW,
+        Implementation.BODO,
     }
 
 
@@ -1690,6 +1716,7 @@ def is_lazy_allowed(impl: Implementation, /) -> TypeIs[_LazyAllowedImpl]:
     """Return True if `DataFrame.lazy(impl)` is allowed."""
     return impl in {
         Implementation.DASK,
+        Implementation.BODO,
         Implementation.DUCKDB,
         Implementation.IBIS,
         Implementation.POLARS,
@@ -2111,6 +2138,8 @@ class _Implementation:
     def __get__(self, instance: Narwhals[_NativePandas], owner: Any) -> _PandasImpl: ...
     @overload
     def __get__(self, instance: Narwhals[_NativeModin], owner: Any) -> _ModinImpl: ...
+    @overload
+    def __get__(self, instance: Narwhals[_NativeBodo], owner: Any) -> _BodoImpl: ...
     @overload
     def __get__(self, instance: Narwhals[_NativeCuDF], owner: Any) -> _CuDFImpl: ...
     @overload

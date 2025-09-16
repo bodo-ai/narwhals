@@ -3,12 +3,12 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping, Sequence, Sized
 from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast, overload
 
-import polars as pl
+import bodo.pandas as bd
 
-from narwhals._polars.namespace import PolarsNamespace
-from narwhals._polars.series import PolarsSeries
-from narwhals._polars.utils import (
-    catch_polars_exception,
+from narwhals._bodo.namespace import BodoNamespace
+from narwhals._bodo.series import BodoSeries
+from narwhals._bodo.utils import (
+    catch_bodo_exception,
     extract_args_kwargs,
     native_to_narwhals_dtype,
 )
@@ -38,8 +38,8 @@ if TYPE_CHECKING:
     from typing_extensions import Self, TypeAlias, TypeIs
 
     from narwhals._compliant.typing import CompliantDataFrameAny, CompliantLazyFrameAny
-    from narwhals._polars.expr import PolarsExpr
-    from narwhals._polars.group_by import PolarsGroupBy, PolarsLazyGroupBy
+    from narwhals._bodo.expr import BodoExpr
+    from narwhals._bodo.group_by import BodoGroupBy, BodoLazyGroupBy
     from narwhals._spark_like.utils import SparkSession
     from narwhals._translate import IntoArrowTable
     from narwhals._typing import _EagerAllowedImpl, _LazyAllowedImpl
@@ -65,7 +65,7 @@ Method: TypeAlias = "Callable[..., R]"
 Where `R` is the return type.
 """
 
-# DataFrame methods where PolarsDataFrame just defers to Polars.DataFrame directly.
+# DataFrame methods where BodoDataFrame just defers to Bodo.DataFrame directly.
 INHERITED_METHODS = frozenset(
     [
         "clone",
@@ -96,10 +96,10 @@ INHERITED_METHODS = frozenset(
     ]
 )
 
-NativePolarsFrame = TypeVar("NativePolarsFrame", pl.DataFrame, pl.LazyFrame)
+NativeBodoFrame = TypeVar("NativeBodoFrame", pl.DataFrame, pl.LazyFrame)
 
 
-class PolarsBaseFrame(Generic[NativePolarsFrame]):
+class BodoBaseFrame(Generic[NativeBodoFrame]):
     drop_nulls: Method[Self]
     explode: Method[Self]
     filter: Method[Self]
@@ -113,13 +113,13 @@ class PolarsBaseFrame(Generic[NativePolarsFrame]):
     unique: Method[Self]
     with_columns: Method[Self]
 
-    _native_frame: NativePolarsFrame
-    _implementation = Implementation.POLARS
+    _native_frame: NativeBodoFrame
+    _implementation = Implementation.BODO
     _version: Version
 
     def __init__(
         self,
-        df: NativePolarsFrame,
+        df: NativeBodoFrame,
         *,
         version: Version,
         validate_backend_version: bool = False,
@@ -142,31 +142,31 @@ class PolarsBaseFrame(Generic[NativePolarsFrame]):
         return self._implementation._backend_version()
 
     @property
-    def native(self) -> NativePolarsFrame:
+    def native(self) -> NativeBodoFrame:
         return self._native_frame
 
     @property
     def columns(self) -> list[str]:
         return self.native.columns
 
-    def __narwhals_namespace__(self) -> PolarsNamespace:
-        return PolarsNamespace(version=self._version)
+    def __narwhals_namespace__(self) -> BodoNamespace:
+        return BodoNamespace(version=self._version)
 
     def __native_namespace__(self) -> ModuleType:
-        if self._implementation is Implementation.POLARS:
+        if self._implementation is Implementation.BODO:
             return self._implementation.to_native_namespace()
 
         msg = f"Expected polars, got: {type(self._implementation)}"  # pragma: no cover
         raise AssertionError(msg)
 
-    def _with_native(self, df: NativePolarsFrame) -> Self:
+    def _with_native(self, df: NativeBodoFrame) -> Self:
         return self.__class__(df, version=self._version)
 
     def _with_version(self, version: Version) -> Self:
         return self.__class__(self.native, version=version)
 
     @classmethod
-    def from_native(cls, data: NativePolarsFrame, /, *, context: _LimitedContext) -> Self:
+    def from_native(cls, data: NativeBodoFrame, /, *, context: _LimitedContext) -> Self:
         return cls(data, version=context._version)
 
     def simple_select(self, *column_names: str) -> Self:
@@ -181,7 +181,7 @@ class PolarsBaseFrame(Generic[NativePolarsFrame]):
 
     def join(
         self,
-        other: PolarsBaseFrame[NativePolarsFrame],
+        other: BodoBaseFrame[NativeBodoFrame],
         *,
         how: JoinStrategy,
         left_on: Sequence[str] | None,
@@ -257,14 +257,14 @@ class PolarsBaseFrame(Generic[NativePolarsFrame]):
         return self._with_native(result)
 
 
-class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
+class BodoDataFrame(BodoBaseFrame[pl.DataFrame]):
     clone: Method[Self]
     collect: Method[CompliantDataFrameAny]
     estimated_size: Method[int | float]
     gather_every: Method[Self]
     item: Method[Any]
     iter_rows: Method[Iterator[tuple[Any, ...]] | Iterator[Mapping[str, Any]]]
-    is_unique: Method[PolarsSeries]
+    is_unique: Method[BodoSeries]
     row: Method[tuple[Any, ...]]
     rows: Method[Sequence[tuple[Any, ...]] | Sequence[Mapping[str, Any]]]
     sample: Method[Self]
@@ -294,7 +294,7 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
     ) -> Self:
         from narwhals.schema import Schema
 
-        pl_schema = Schema(schema).to_polars() if schema is not None else schema
+        pl_schema = Schema(schema).to_bodo() if schema is not None else schema
         return cls.from_native(pl.from_dict(data, pl_schema), context=context)
 
     @staticmethod
@@ -313,7 +313,7 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
         from narwhals.schema import Schema
 
         pl_schema = (
-            Schema(schema).to_polars()
+            Schema(schema).to_bodo()
             if isinstance(schema, (Mapping, Schema))
             else schema
         )
@@ -323,13 +323,13 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
         return self._version.dataframe(self, level="full")
 
     def __repr__(self) -> str:  # pragma: no cover
-        return "PolarsDataFrame"
+        return "BodoDataFrame"
 
     def __narwhals_dataframe__(self) -> Self:
         return self
 
     @overload
-    def _from_native_object(self, obj: pl.Series) -> PolarsSeries: ...
+    def _from_native_object(self, obj: pl.Series) -> BodoSeries: ...
 
     @overload
     def _from_native_object(self, obj: pl.DataFrame) -> Self: ...
@@ -339,9 +339,9 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
 
     def _from_native_object(
         self, obj: pl.Series | pl.DataFrame | T
-    ) -> Self | PolarsSeries | T:
+    ) -> Self | BodoSeries | T:
         if isinstance(obj, pl.Series):
-            return PolarsSeries.from_native(obj, context=self)
+            return BodoSeries.from_native(obj, context=self)
         if self._is_native(obj):
             return self._with_native(obj)
         # scalar
@@ -363,7 +363,7 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
                 msg = f"{e!s}\n\nHint: Did you mean one of these columns: {self.columns}?"
                 raise ColumnNotFoundError(msg) from e
             except Exception as e:  # noqa: BLE001
-                raise catch_polars_exception(e) from None
+                raise catch_bodo_exception(e) from None
 
         return func
 
@@ -387,8 +387,8 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
     def __getitem__(  # noqa: C901, PLR0912
         self,
         item: tuple[
-            SingleIndexSelector | MultiIndexSelector[PolarsSeries],
-            MultiColSelector[PolarsSeries],
+            SingleIndexSelector | MultiIndexSelector[BodoSeries],
+            MultiColSelector[BodoSeries],
         ],
     ) -> Any:
         rows, columns = item
@@ -399,8 +399,8 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
             selected = self.native.__getitem__(selector)  # type: ignore[index]
             return self._from_native_object(selected)
         else:  # pragma: no cover # noqa: RET505
-            # TODO(marco): we can delete this branch after Polars==0.20.30 becomes the minimum
-            # Polars version we support
+            # TODO(marco): we can delete this branch after Bodo==0.20.30 becomes the minimum
+            # Bodo version we support
             # This mostly mirrors the logic in `EagerDataFrame.__getitem__`.
             rows = list(rows) if isinstance(rows, tuple) else rows
             columns = list(columns) if isinstance(columns, tuple) else columns
@@ -416,9 +416,9 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
                         native = native.select(
                             self.columns[slice(columns.start, columns.stop, columns.step)]
                         )
-                    # NOTE: `mypy` loses track of `PolarsSeries` when `is_compliant_series` is used here
+                    # NOTE: `mypy` loses track of `BodoSeries` when `is_compliant_series` is used here
                     # `pyright` is fine
-                    elif isinstance(columns, PolarsSeries):
+                    elif isinstance(columns, BodoSeries):
                         native = native[:, columns.native.to_list()]
                     else:
                         native = native[:, columns]
@@ -451,12 +451,12 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
 
             return self._with_native(native)
 
-    def get_column(self, name: str) -> PolarsSeries:
-        return PolarsSeries.from_native(self.native.get_column(name), context=self)
+    def get_column(self, name: str) -> BodoSeries:
+        return BodoSeries.from_native(self.native.get_column(name), context=self)
 
-    def iter_columns(self) -> Iterator[PolarsSeries]:
+    def iter_columns(self) -> Iterator[BodoSeries]:
         for series in self.native.iter_columns():
-            yield PolarsSeries.from_native(series, context=self)
+            yield BodoSeries.from_native(series, context=self)
 
     def lazy(
         self,
@@ -464,8 +464,8 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
         *,
         session: SparkSession | None = None,
     ) -> CompliantLazyFrameAny:
-        if backend is None or backend is Implementation.POLARS:
-            return PolarsLazyFrame.from_native(self.native.lazy(), context=self)
+        if backend is None or backend is Implementation.BODO:
+            return BodoLazyFrame.from_native(self.native.lazy(), context=self)
         if backend is Implementation.DUCKDB:
             import duckdb  # ignore-banned-import
 
@@ -523,27 +523,27 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
         raise AssertionError  # pragma: no cover
 
     @overload
-    def to_dict(self, *, as_series: Literal[True]) -> dict[str, PolarsSeries]: ...
+    def to_dict(self, *, as_series: Literal[True]) -> dict[str, BodoSeries]: ...
 
     @overload
     def to_dict(self, *, as_series: Literal[False]) -> dict[str, list[Any]]: ...
 
     def to_dict(
         self, *, as_series: bool
-    ) -> dict[str, PolarsSeries] | dict[str, list[Any]]:
+    ) -> dict[str, BodoSeries] | dict[str, list[Any]]:
         if as_series:
             return {
-                name: PolarsSeries.from_native(col, context=self)
+                name: BodoSeries.from_native(col, context=self)
                 for name, col in self.native.to_dict().items()
             }
         return self.native.to_dict(as_series=False)
 
     def group_by(
-        self, keys: Sequence[str] | Sequence[PolarsExpr], *, drop_null_keys: bool
-    ) -> PolarsGroupBy:
-        from narwhals._polars.group_by import PolarsGroupBy
+        self, keys: Sequence[str] | Sequence[BodoExpr], *, drop_null_keys: bool
+    ) -> BodoGroupBy:
+        from narwhals._bodo.group_by import BodoGroupBy
 
-        return PolarsGroupBy(self, keys, drop_null_keys=drop_null_keys)
+        return BodoGroupBy(self, keys, drop_null_keys=drop_null_keys)
 
     def drop(self, columns: Sequence[str], *, strict: bool) -> Self:
         to_drop = parse_columns_to_drop(self, columns, strict=strict)
@@ -570,15 +570,15 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
                 separator=separator,
             )
         except Exception as e:  # noqa: BLE001
-            raise catch_polars_exception(e) from None
+            raise catch_bodo_exception(e) from None
         return self._from_native_object(result)
 
-    def to_polars(self) -> pl.DataFrame:
+    def to_bodo(self) -> pl.DataFrame:
         return self.native
 
     def join(
         self,
-        other: PolarsBaseFrame[pl.DataFrame],
+        other: BodoBaseFrame[pl.DataFrame],
         *,
         how: JoinStrategy,
         left_on: Sequence[str] | None,
@@ -590,7 +590,7 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
                 other=other, how=how, left_on=left_on, right_on=right_on, suffix=suffix
             )
         except Exception as e:  # noqa: BLE001
-            raise catch_polars_exception(e) from None
+            raise catch_bodo_exception(e) from None
 
     def top_k(
         self, k: int, *, by: str | Iterable[str], reverse: bool | Sequence[bool]
@@ -598,10 +598,10 @@ class PolarsDataFrame(PolarsBaseFrame[pl.DataFrame]):
         try:
             return super().top_k(k=k, by=by, reverse=reverse)
         except Exception as e:  # noqa: BLE001  # pragma: no cover
-            raise catch_polars_exception(e) from None
+            raise catch_bodo_exception(e) from None
 
 
-class PolarsLazyFrame(PolarsBaseFrame[pl.LazyFrame]):
+class BodoLazyFrame(BodoBaseFrame[pl.LazyFrame]):
     sink_parquet: Method[None]
 
     @staticmethod
@@ -612,7 +612,7 @@ class PolarsLazyFrame(PolarsBaseFrame[pl.LazyFrame]):
         return self._version.lazyframe(self, level="lazy")
 
     def __repr__(self) -> str:  # pragma: no cover
-        return "PolarsLazyFrame"
+        return "BodoLazyFrame"
 
     def __narwhals_lazyframe__(self) -> Self:
         return self
@@ -631,14 +631,14 @@ class PolarsLazyFrame(PolarsBaseFrame[pl.LazyFrame]):
 
         return func
 
-    def _iter_columns(self) -> Iterator[PolarsSeries]:  # pragma: no cover
-        yield from self.collect(Implementation.POLARS).iter_columns()
+    def _iter_columns(self) -> Iterator[BodoSeries]:  # pragma: no cover
+        yield from self.collect(Implementation.BODO).iter_columns()
 
     def collect_schema(self) -> dict[str, DType]:
         try:
             return super().collect_schema()
         except Exception as e:  # noqa: BLE001
-            raise catch_polars_exception(e) from None
+            raise catch_bodo_exception(e) from None
 
     def collect(
         self, backend: _EagerAllowedImpl | None, **kwargs: Any
@@ -646,10 +646,10 @@ class PolarsLazyFrame(PolarsBaseFrame[pl.LazyFrame]):
         try:
             result = self.native.collect(**kwargs)
         except Exception as e:  # noqa: BLE001
-            raise catch_polars_exception(e) from None
+            raise catch_bodo_exception(e) from None
 
-        if backend is None or backend is Implementation.POLARS:
-            return PolarsDataFrame.from_native(result, context=self)
+        if backend is None or backend is Implementation.BODO:
+            return BodoDataFrame.from_native(result, context=self)
 
         if backend is Implementation.PANDAS:
             from narwhals._pandas_like.dataframe import PandasLikeDataFrame
@@ -676,11 +676,11 @@ class PolarsLazyFrame(PolarsBaseFrame[pl.LazyFrame]):
         raise ValueError(msg)  # pragma: no cover
 
     def group_by(
-        self, keys: Sequence[str] | Sequence[PolarsExpr], *, drop_null_keys: bool
-    ) -> PolarsLazyGroupBy:
-        from narwhals._polars.group_by import PolarsLazyGroupBy
+        self, keys: Sequence[str] | Sequence[BodoExpr], *, drop_null_keys: bool
+    ) -> BodoLazyGroupBy:
+        from narwhals._bodo.group_by import BodoLazyGroupBy
 
-        return PolarsLazyGroupBy(self, keys, drop_null_keys=drop_null_keys)
+        return BodoLazyGroupBy(self, keys, drop_null_keys=drop_null_keys)
 
     def drop(self, columns: Sequence[str], *, strict: bool) -> Self:
         if self._backend_version < (1, 0, 0):

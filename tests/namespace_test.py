@@ -28,9 +28,9 @@ ExprT = TypeVar("ExprT", bound="CompliantExprAny")
 
 IntoIterable: TypeAlias = Callable[[Sequence[Any]], Iterable[Any]]
 
-_EAGER_ALLOWED = "polars", "pandas", "pyarrow", "modin", "cudf"
+_EAGER_ALLOWED = "polars", "pandas", "pyarrow", "modin", "cudf", "bodo"
 _LAZY_ONLY = "dask", "duckdb", "pyspark", "sqlframe"
-_LAZY_ALLOWED = ("polars", *_LAZY_ONLY)
+_LAZY_ALLOWED = ("polars", "bodo", *_LAZY_ONLY)
 _BACKENDS = (*_EAGER_ALLOWED, *_LAZY_ONLY)
 
 eager_allowed = pytest.mark.parametrize("backend", _EAGER_ALLOWED)

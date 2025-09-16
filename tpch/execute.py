@@ -9,6 +9,7 @@ import duckdb
 import pandas as pd
 import polars as pl
 import pyarrow as pa
+import bodo.pandas as bd
 import sqlframe
 from polars.testing import assert_frame_equal
 from sqlframe.duckdb import DuckDBSession
@@ -36,6 +37,7 @@ BACKEND_NAMESPACE_KWARGS_MAP = {
     "duckdb": (duckdb, {}),
     "dask": (dd, {"engine": "pyarrow", "dtype_backend": "pyarrow"}),
     "sqlframe": (sqlframe, {"session": DuckDBSession()}),
+    "bodo": (bd, {}),
 }
 
 DUCKDB_SKIPS = [

@@ -6,7 +6,7 @@ import pytest
 
 import narwhals as nw
 from narwhals._utils import Implementation
-from narwhals.dependencies import get_cudf, get_modin, get_polars
+from narwhals.dependencies import get_cudf, get_modin, get_polars, get_bodo_dataframes
 from tests.utils import DUCKDB_VERSION, POLARS_VERSION, Constructor, assert_equal_data
 
 if TYPE_CHECKING:
@@ -34,6 +34,9 @@ def test_collect_to_default_backend(constructor: Constructor) -> None:
     elif "modin" in str(constructor):
         mpd = get_modin()
         expected_cls = mpd.DataFrame
+    elif "bodo" in str(constructor):
+        bd = get_bodo_dataframes()
+        expected_cls = bd.DataFrame
     elif "cudf" in str(constructor):
         cudf = get_cudf()
         expected_cls = cudf.DataFrame

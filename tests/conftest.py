@@ -116,6 +116,22 @@ def modin_pyarrow_constructor(obj: Data) -> NativeDataFrame:  # pragma: no cover
     return cast("NativeDataFrame", df)
 
 
+def bodo_constructor(obj: Data) -> NativeDataFrame:  # pragma: no cover
+    import bodo.pandas as bd
+    import pandas as pd
+
+    df = bd.DataFrame(pd.DataFrame(obj))
+    return cast("NativeDataFrame", df)
+
+
+def bodo_lazy_constructor(obj: Data) -> NativeDataFrame:  # pragma: no cover
+    import bodo.pandas as bd
+    import pandas as pd
+
+    df = bd.DataFrame(pd.DataFrame(obj))
+    return cast("NativeDataFrame", df)
+
+
 def cudf_constructor(obj: Data) -> NativeDataFrame:  # pragma: no cover
     import cudf
 
@@ -221,11 +237,13 @@ EAGER_CONSTRUCTORS: dict[str, ConstructorEager] = {
     "pyarrow": pyarrow_table_constructor,
     "modin": modin_constructor,
     "modin[pyarrow]": modin_pyarrow_constructor,
+    "bodo": bodo_constructor,
     "cudf": cudf_constructor,
     "polars[eager]": polars_eager_constructor,
 }
 LAZY_CONSTRUCTORS: dict[str, ConstructorLazy] = {
     "dask": dask_lazy_p2_constructor,
+    "bodo[lazy]": bodo_lazy_constructor,
     "polars[lazy]": polars_lazy_constructor,
     "duckdb": duckdb_lazy_constructor,
     "pyspark": pyspark_lazy_constructor,  # type: ignore[dict-item]

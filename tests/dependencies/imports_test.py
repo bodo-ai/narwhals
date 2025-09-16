@@ -14,6 +14,7 @@ implementations = [
     Implementation.DUCKDB,
     Implementation.IBIS,
     Implementation.MODIN,
+    Implementation.BODO,
     Implementation.PANDAS,
     Implementation.POLARS,
     Implementation.PYARROW,

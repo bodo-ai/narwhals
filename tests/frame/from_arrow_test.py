@@ -83,6 +83,13 @@ def test_dataframe_from_arrow_modin(table: pa.Table, data: dict[str, Any]) -> No
     assert_equal_data(result, data)
 
 
+def test_dataframe_from_arrow_bodo(table: pa.Table, data: dict[str, Any]) -> None:
+    pytest.importorskip("bodo.pandas")
+    result = nw.DataFrame.from_arrow(table, backend="bodo")
+    assert result.implementation.is_bodo()
+    assert_equal_data(result, data)
+
+
 def test_dataframe_from_arrow_invalid(table: pa.Table, data: dict[str, Any]) -> None:
     with pytest.raises(TypeError, match="PyCapsule"):
         nw.DataFrame.from_arrow(data, backend=pa)  # type: ignore[arg-type]

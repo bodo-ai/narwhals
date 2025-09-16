@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 BANNED_IMPORTS = {
+    "bodo",
     "cudf",
     "cupy",
     "dask",
@@ -21,7 +22,7 @@ BANNED_IMPORTS = {
 }
 
 ALLOWED_IMPORTS = {
-    "_pandas_like": {"pandas", "numpy"},
+    "_pandas_like": {"pandas", "numpy", "bodo"},
     "_arrow": {"pyarrow", "pyarrow.compute", "pyarrow.parquet"},
     "_dask": {"dask.dataframe", "pandas", "dask_expr"},
     "_polars": {"polars"},
