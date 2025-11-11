@@ -61,9 +61,6 @@ def test_convert_time_zone_series(
         pytest.skip()
     if any(x in str(constructor_eager) for x in ("cudf",)):
         request.applymarker(pytest.mark.xfail)
-    # if "bodo" in str(constructor_eager):
-    #     # BODO fail
-    #     pytest.skip()
     data = {
         "a": [
             datetime(2020, 1, 1, tzinfo=timezone.utc),

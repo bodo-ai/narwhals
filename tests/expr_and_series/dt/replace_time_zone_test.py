@@ -86,9 +86,6 @@ def test_replace_time_zone_series(
         pytest.skip()
     if any(x in str(constructor_eager) for x in ("cudf",)):
         request.applymarker(pytest.mark.xfail)
-    # if "bodo" in str(constructor_eager):
-    #     # BODO fail
-    #     pytest.skip()
     data = {
         "a": [
             datetime(2020, 1, 1, tzinfo=timezone.utc),
@@ -113,9 +110,6 @@ def test_replace_time_zone_none_series(constructor_eager: ConstructorEager) -> N
         or ("modin_pyarrow" in str(constructor_eager) and PANDAS_VERSION < (2,))
     ):
         pytest.skip()
-    # if "bodo" in str(constructor_eager):
-    #     # BODO fail
-    #     pytest.skip()
     data = {
         "a": [
             datetime(2020, 1, 1, tzinfo=timezone.utc),
