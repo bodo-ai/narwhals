@@ -37,9 +37,6 @@ def test_replace_time_zone(
             datetime(2020, 1, 2, tzinfo=timezone.utc),
         ]
     }
-    # if "bodo" in str(constructor):
-    #     # BODO fail
-    #     pytest.skip()
     df = nw.from_native(constructor(data))
     result = df.select(nw.col("a").dt.replace_time_zone("Asia/Kathmandu"))
     result_dtype = result.collect_schema()["a"]
