@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Literal
 
 import pytest
@@ -25,8 +26,8 @@ def test_unique_eager(
     keep: Literal["first", "last"],
     expected: dict[str, list[float]],
 ) -> None:
-    if "bodo" in str(constructor_eager):
-        # BODO fail
+    if "bodo" in str(constructor_eager) and os.environ.get("BODO_NUM_WORKERS") != "1":
+        # Order items processed can be different in parallel case.
         pytest.skip()
     df_raw = constructor_eager(data)
     df = nw.from_native(df_raw)
@@ -59,8 +60,8 @@ def test_unique(
 ) -> None:
     if "duckdb" in str(constructor) and DUCKDB_VERSION < (1, 3):
         pytest.skip()
-    if "bodo" in str(constructor):
-        # BODO fail
+    if "bodo" in str(constructor) and os.environ.get("BODO_NUM_WORKERS") != "1":
+        # Order items processed can be different in parallel case.
         pytest.skip()
     df_raw = constructor(data)
     df = nw.from_native(df_raw)
@@ -81,8 +82,8 @@ def test_unique_full_subset(
 ) -> None:
     if "duckdb" in str(constructor) and DUCKDB_VERSION < (1, 3):
         pytest.skip()
-    if "bodo" in str(constructor):
-        # BODO fail
+    if "bodo" in str(constructor) and os.environ.get("BODO_NUM_WORKERS") != "1":
+        # Order items processed can be different in parallel case.
         pytest.skip()
     data = {"a": [1, 1, 1, 2], "b": [3, 3, 4, 4]}
     df_raw = constructor(data)
@@ -98,8 +99,8 @@ def test_unique_invalid_keep(constructor: Constructor) -> None:
 
 @pytest.mark.filterwarnings("ignore:.*backwards-compatibility:UserWarning")
 def test_unique_none(constructor: Constructor) -> None:
-    if "bodo" in str(constructor):
-        # BODO fail
+    if "bodo" in str(constructor) and os.environ.get("BODO_NUM_WORKERS") != "1":
+        # Order items processed can be different in parallel case.
         pytest.skip()
     df_raw = constructor(data)
     df = nw.from_native(df_raw)
