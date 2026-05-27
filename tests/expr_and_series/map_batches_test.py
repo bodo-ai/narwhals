@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+pytest.importorskip("numpy")
+
 import narwhals as nw
 from tests.utils import (
     PANDAS_VERSION,
@@ -32,13 +34,11 @@ def test_map_batches_expr_scalar(
     constructor_eager: ConstructorEager, value: Any, dtype: DType
 ) -> None:
     df = nw.from_native(constructor_eager(data))
-    if (
-        dtype.is_nested()
-        and df.implementation.is_pandas_like()
-        and PANDAS_VERSION < (2, 2)
-    ):  # pragma: no cover
-        reason = "pandas is too old for nested types"
-        pytest.skip(reason=reason)
+    if dtype.is_nested() and df.implementation.is_pandas_like():
+        if PANDAS_VERSION < (2, 2):  # pragma: no cover
+            reason = "pandas is too old for nested types"
+            pytest.skip(reason=reason)
+        pytest.importorskip("pyarrow")
 
     expected = df.select(
         nw.col("a", "b").map_batches(
@@ -82,7 +82,8 @@ def test_map_batches_exception(
     df = nw.from_native(constructor_eager(data))
     msg = (
         r"`map(?:_batches)?` with `returns_scalar=False` must return a Series; found "
-        "'numpy.int64'.\n\nIf `returns_scalar` is set to `True`, a returned value can be "
+        r"'numpy\.int(?:32|64)'\."
+        "\n\nIf `returns_scalar` is set to `True`, a returned value can be "
         "a scalar value."
     )
 

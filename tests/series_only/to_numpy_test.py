@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-import numpy as np
 import pytest
+
+pytest.importorskip("numpy")
+import numpy as np
 from numpy.testing import assert_array_equal
 
 import narwhals as nw
@@ -17,10 +19,8 @@ if TYPE_CHECKING:
 def test_to_numpy(
     constructor_eager: ConstructorEager, request: pytest.FixtureRequest
 ) -> None:
-    if (
-        "pandas_constructor" in str(constructor_eager)
-        or "modin_constructor" in str(constructor_eager)
-        or "cudf_constructor" in str(constructor_eager)
+    if "pandas_constructor" in str(constructor_eager) or "modin_constructor" in str(
+        constructor_eager
     ):
         request.applymarker(pytest.mark.xfail)
 
@@ -34,16 +34,13 @@ def test_to_numpy(
     assert_array_equal(s.to_numpy(), np.array(data, dtype=float))
 
 
-def test_to_numpy_tz_aware(
-    constructor_eager: ConstructorEager, request: pytest.FixtureRequest
-) -> None:
+def test_to_numpy_tz_aware(constructor_eager: ConstructorEager) -> None:
     if (
         ("pandas_pyarrow" in str(constructor_eager) and PANDAS_VERSION < (2, 2))
         or ("modin_pyarrow" in str(constructor_eager) and PANDAS_VERSION < (2, 2))
         or ("pyarrow" in str(constructor_eager) and is_windows())
     ):
-        request.applymarker(pytest.mark.xfail)
-        request.applymarker(pytest.mark.xfail)
+        pytest.skip()
     df = nw.from_native(
         constructor_eager({"a": [datetime(2020, 1, 1), datetime(2020, 1, 2)]}),
         eager_only=True,

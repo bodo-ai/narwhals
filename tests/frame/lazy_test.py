@@ -10,6 +10,7 @@ import narwhals as nw
 from narwhals._utils import Implementation
 from narwhals.dependencies import get_cudf, get_modin, get_bodo
 from tests.utils import (
+    DUCKDB_VERSION,
     PANDAS_VERSION,
     assert_equal_data,
     pyspark_session,
@@ -58,6 +59,7 @@ def test_lazy_to_default(constructor_eager: ConstructorEager) -> None:
     assert isinstance(result.to_native(), expected_cls)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "backend",
     [
@@ -86,9 +88,12 @@ def test_lazy(
         "pandas_constructor" in str(constructor_eager)
         and impl.is_duckdb()
         and PANDAS_VERSION >= (3,)
+        and DUCKDB_VERSION < (1, 4, 4)
     ):  # pragma: no cover
         # https://github.com/duckdb/duckdb/issues/18297
         request.applymarker(pytest.mark.xfail)
+    if "pandas_nullable" in str(constructor_eager):
+        pytest.importorskip("pyarrow")
 
     is_spark_connect = os.environ.get("SPARK_CONNECT", None)
     if is_spark_connect is not None and impl.is_pyspark():  # pragma: no cover

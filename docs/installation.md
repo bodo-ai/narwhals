@@ -4,7 +4,7 @@
 
 === "UV"
 
-    First, ensure you have installed [UV](https://github.com/astral-sh/uv), and make sure you have [created and activated](https://docs.astral.sh/uv/pip/environments/#python-environments) a Python 3.8+ virtual environment.
+    First, ensure you have installed [UV](https://github.com/astral-sh/uv), and make sure you have [created and activated](https://docs.astral.sh/uv/pip/environments/#python-environments) a Python 3.10+ virtual environment.
 
     If you haven't, you can follow our [_setting up your environment_](https://github.com/narwhals-dev/narwhals/blob/main/CONTRIBUTING.md#option-1-use-uv-recommended) guide.
     Then, run:
@@ -15,7 +15,7 @@
 
 === "Python's venv"
 
-    First, ensure you have [created and activated](https://docs.python.org/3/library/venv.html) a Python 3.8+ virtual environment.
+    First, ensure you have [created and activated](https://docs.python.org/3/library/venv.html) a Python 3.10+ virtual environment.
 
     Then, run:
 
@@ -27,7 +27,7 @@
 
 To verify the installation, start the Python REPL and execute:
 
-```python exec="1" source="above" session="quickstart" result="python"
+```python exec="yes" source="above" session="quickstart" result="python"
 import narwhals
 
 print(narwhals.__version__)
@@ -52,7 +52,7 @@ they are not required dependencies - Narwhals only ever uses what the user passe
 
 Create a Python file `t.py` with the following content:
 
-```python exec="1" source="above" session="quickstart" result="python"
+```python exec="yes" source="above" session="quickstart" result="python"
 from __future__ import annotations
 
 import pandas as pd

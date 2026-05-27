@@ -4,7 +4,6 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
-import pandas as pd
 import pytest
 
 import narwhals as nw
@@ -40,7 +39,7 @@ def test_from_arrow_to_polars(monkeypatch: pytest.MonkeyPatch) -> None:
     import polars as pl
 
     tbl = pa.table({"ab": [1, 2, 3], "ba": [4, 5, 6]})
-    monkeypatch.delitem(sys.modules, "pandas")
+    monkeypatch.delitem(sys.modules, "pandas", raising=False)
     if PYARROW_VERSION < (14,):  # pragma: no cover
         result = nw.from_arrow(tbl, backend=pl)
     else:
@@ -54,6 +53,9 @@ def test_from_arrow_to_polars(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.xfail(PYARROW_VERSION < (14,), reason="too old")
 def test_from_arrow_to_pandas() -> None:
+    pytest.importorskip("pandas")
+    import pandas as pd
+
     df = nw.from_native(pa.table({"ab": [1, 2, 3], "ba": [4, 5, 6]}), eager_only=True)
     result = nw.from_arrow(df, backend=pd)
     assert isinstance(result.to_native(), pd.DataFrame)

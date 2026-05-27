@@ -6,11 +6,11 @@ import pytest
 
 import narwhals as nw
 from narwhals._utils import Implementation
-from narwhals.dependencies import get_cudf, get_modin, get_polars, get_bodo
-from tests.utils import DUCKDB_VERSION, POLARS_VERSION, Constructor, assert_equal_data
+from narwhals.dependencies import get_cudf, get_modin, get_polars
+from tests.utils import POLARS_VERSION, Constructor, assert_equal_data
 
 if TYPE_CHECKING:
-    from narwhals._typing import Arrow, Dask, IntoBackend, Modin, Pandas, Polars, Bodo
+    from narwhals._typing import Arrow, Dask, IntoBackend, Modin, Pandas, Polars
 
 
 data = {"a": [1, 2], "b": [3, 4]}
@@ -34,9 +34,6 @@ def test_collect_to_default_backend(constructor: Constructor) -> None:
     elif "modin" in str(constructor):
         mpd = get_modin()
         expected_cls = mpd.DataFrame
-    elif "bodo" in str(constructor):
-        bd = get_bodo()
-        expected_cls = bd.DataFrame
     elif "cudf" in str(constructor):
         cudf = get_cudf()
         expected_cls = cudf.DataFrame
@@ -57,6 +54,7 @@ def test_collect_to_valid_backend_pandas(
     constructor: Constructor, backend: Pandas
 ) -> None:
     pytest.importorskip("pandas")
+    pytest.importorskip("pyarrow")
     import pandas as pd
 
     df = nw.from_native(constructor(data))
@@ -71,6 +69,7 @@ def test_collect_to_valid_backend_pandas(
 def test_collect_to_valid_backend_polars(
     constructor: Constructor, backend: Polars
 ) -> None:
+    pytest.importorskip("pyarrow")
     pytest.importorskip("polars")
     import polars as pl
 
@@ -99,6 +98,7 @@ def test_collect_to_valid_backend_pyarrow(
 )
 def test_collect_to_valid_backend_pandas_mod(constructor: Constructor) -> None:
     pytest.importorskip("pandas")
+    pytest.importorskip("pyarrow")
     import pandas as pd
 
     df = nw.from_native(constructor(data))
@@ -110,6 +110,7 @@ def test_collect_to_valid_backend_pandas_mod(constructor: Constructor) -> None:
     "ignore:is_sparse is deprecated and will be removed in a future version."
 )
 def test_collect_to_valid_backend_polars_mod(constructor: Constructor) -> None:
+    pytest.importorskip("pyarrow")
     pytest.importorskip("polars")
     import polars as pl
 
@@ -131,10 +132,10 @@ def test_collect_to_valid_backend_pyarrow_mod(constructor: Constructor) -> None:
 
 
 @pytest.mark.parametrize(
-    "backend", ["foo", Implementation.DASK, Implementation.MODIN, Implementation.BODO, pytest]
+    "backend", ["foo", Implementation.DASK, Implementation.MODIN, pytest]
 )
 def test_collect_to_invalid_backend(
-    constructor: Constructor, backend: Literal["foo"] | IntoBackend[Modin | Dask | Bodo]
+    constructor: Constructor, backend: Literal["foo"] | IntoBackend[Modin | Dask]
 ) -> None:
     df = nw.from_native(constructor(data))
 
@@ -148,7 +149,7 @@ def test_collect_with_kwargs(constructor: Constructor) -> None:
         if POLARS_VERSION > (1, 29, 0)
         else {"no_optimization": True}
     )
-    collect_kwargs = {
+    collect_kwargs: dict[nw.Implementation, Any] = {
         nw.Implementation.POLARS: pl_kwargs,
         nw.Implementation.DASK: {"optimize_graph": False},
         nw.Implementation.PYARROW: {},
@@ -166,11 +167,7 @@ def test_collect_with_kwargs(constructor: Constructor) -> None:
     assert_equal_data(result, expected)
 
 
-def test_collect_empty(constructor: Constructor, request: pytest.FixtureRequest) -> None:
-    if any(
-        x in str(constructor) for x in ("duckdb", "sqlframe", "ibis")
-    ) and DUCKDB_VERSION >= (1, 4):
-        request.applymarker(pytest.mark.xfail)
+def test_collect_empty(constructor: Constructor) -> None:
     df = nw.from_native(constructor({"a": [1, 2, 3]}))
     lf = df.filter(nw.col("a").is_null()).with_columns(b=nw.lit(None)).lazy()
     result = lf.collect()

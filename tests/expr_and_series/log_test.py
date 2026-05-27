@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 
-import pandas as pd
 import pytest
 
 import narwhals as nw
@@ -25,6 +24,24 @@ def test_log_expr(constructor: Constructor, base: float) -> None:
     assert_equal_data(result, {"a": expected[base]})
 
 
+def test_log_default_base_polars_ibis() -> None:  # pragma: no cover
+    pytest.importorskip("ibis")
+    pytest.importorskip("polars")
+    import ibis
+    import polars as pl
+
+    con = ibis.polars.connect()
+
+    ibis_table = con.create_table("t", pl.LazyFrame(data))
+
+    df = nw.from_native(ibis_table)
+    result_default = df.select(nw.col("a").log())
+    result_e = df.select(nw.col("a").log(base=math.e))
+
+    assert_equal_data(result_default, {"a": expected[math.e]})
+    assert_equal_data(result_e, {"a": expected[math.e]})
+
+
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")
 @pytest.mark.parametrize("base", [2, 10, math.e])
 def test_log_series(constructor_eager: ConstructorEager, base: float) -> None:
@@ -34,6 +51,9 @@ def test_log_series(constructor_eager: ConstructorEager, base: float) -> None:
 
 
 def test_log_dtype_pandas() -> None:
+    pytest.importorskip("pandas")
+    import pandas as pd
+
     s = pd.Series([1.0, 2.0], name="a", dtype="float32", index=[8, 7])
     result = nw.from_native(s, series_only=True).log().to_native()
     expected = pd.Series([0.0, 0.693147], name="a", dtype="float32", index=[8, 7])
@@ -41,7 +61,10 @@ def test_log_dtype_pandas() -> None:
 
 
 @pytest.mark.skipif(PANDAS_VERSION < (2, 0, 0), reason="nullable types require pandas2+")
-def test_log_dtype_pandas_nullabe() -> None:
+def test_log_dtype_pandas_nullable() -> None:
+    pytest.importorskip("pandas")
+    import pandas as pd
+
     s = pd.Series([1.0, None, 2.0], name="a", dtype="Float32", index=[8, 7, 6])
     result = nw.from_native(s, series_only=True).log().to_native()
     expected = pd.Series(
@@ -52,6 +75,11 @@ def test_log_dtype_pandas_nullabe() -> None:
 
 @pytest.mark.skipif(PANDAS_VERSION < (2, 1, 0), reason="nullable types require pandas2+")
 def test_log_dtype_pandas_pyarrow() -> None:
+    pytest.importorskip("pandas")
+    pytest.importorskip("pyarrow")
+
+    import pandas as pd
+
     s = pd.Series([1.0, None, 2.0], name="a", dtype="Float32[pyarrow]", index=[8, 7, 6])
     result = nw.from_native(s, series_only=True).log().to_native()
     expected = pd.Series(

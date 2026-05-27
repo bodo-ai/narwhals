@@ -3,29 +3,25 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Literal
 
-import numpy as np
-import pyarrow as pa
-import pyarrow.compute as pc
 import pytest
 
 import narwhals as nw
 from tests.utils import PANDAS_VERSION, Constructor, ConstructorEager, assert_equal_data
 
 data = {
-    "a": np.array([None, timedelta(minutes=1, seconds=1, milliseconds=1, microseconds=1)], dtype="timedelta64[ns]"),
-    "b": np.array([timedelta(milliseconds=2), timedelta(milliseconds=1, microseconds=300)], dtype="timedelta64[ns]"),
-    "c": np.array([None, 20], dtype="timedelta64[ns]"),
+    "a": [None, timedelta(minutes=1, seconds=1, milliseconds=1, microseconds=1)],
+    "b": [timedelta(milliseconds=2), timedelta(milliseconds=1, microseconds=300)],
 }
 
 
 @pytest.mark.parametrize(
-    ("attribute", "expected_a", "expected_b", "expected_c"),
+    ("attribute", "expected_a", "expected_b"),
     [
-        ("total_minutes", [0, 1], [0, 0], [0, 0]),
-        ("total_seconds", [0, 61], [0, 0], [0, 0]),
-        ("total_milliseconds", [0, 61001], [2, 1], [0, 0]),
-        ("total_microseconds", [0, 61001001], [2000, 1300], [0, 0]),
-        ("total_nanoseconds", [0, 61001001000], [2000000, 1300000], [0, 20]),
+        ("total_minutes", [0, 1], [0, 0]),
+        ("total_seconds", [0, 61], [0, 0]),
+        ("total_milliseconds", [0, 61001], [2, 1]),
+        ("total_microseconds", [0, 61001001], [2000, 1300]),
+        ("total_nanoseconds", [0, 61001001000], [2000000, 1300000]),
     ],
 )
 def test_duration_attributes(
@@ -34,7 +30,6 @@ def test_duration_attributes(
     attribute: str,
     expected_a: list[int],
     expected_b: list[int],
-    expected_c: list[int],
 ) -> None:
     if PANDAS_VERSION < (2, 2) and "pandas_pyarrow" in str(constructor):
         pytest.skip()
@@ -51,18 +46,48 @@ def test_duration_attributes(
     result_b = df.select(getattr(nw.col("b").dt, attribute)().fill_null(0))
     assert_equal_data(result_b, {"b": expected_b})
 
+
+@pytest.mark.parametrize(
+    ("attribute", "expected_c"),
+    [
+        ("total_minutes", [0, 0]),
+        ("total_seconds", [0, 0]),
+        ("total_milliseconds", [0, 0]),
+        ("total_microseconds", [0, 0]),
+        ("total_nanoseconds", [0, 20]),
+    ],
+)
+def test_duration_attributes_nano(
+    request: pytest.FixtureRequest,
+    constructor: Constructor,
+    attribute: str,
+    expected_c: list[int],
+) -> None:
+    if PANDAS_VERSION < (2, 2) and "pandas_pyarrow" in str(constructor):
+        pytest.skip()
+    if "pyspark" in str(constructor) or "ibis" in str(constructor):
+        request.applymarker(pytest.mark.xfail)
+    if "duckdb" in str(constructor) and attribute == "total_nanoseconds":
+        request.applymarker(pytest.mark.xfail)
+
+    pytest.importorskip("numpy")
+    import numpy as np
+
+    data = {"c": np.array([None, 20], dtype="timedelta64[ns]")}
+    df = nw.from_native(constructor(data))
+
     result_c = df.select(getattr(nw.col("c").dt, attribute)().fill_null(0))
     assert_equal_data(result_c, {"c": expected_c})
 
 
 @pytest.mark.parametrize(
-    ("attribute", "expected_a", "expected_b", "expected_c"),
+    ("attribute", "expected_a", "expected_b"),
     [
-        ("total_minutes", [0, 1], [0, 0], [0, 0]),
-        ("total_seconds", [0, 61], [0, 0], [0, 0]),
-        ("total_milliseconds", [0, 61001], [2, 1], [0, 0]),
-        ("total_microseconds", [0, 61001001], [2000, 1300], [0, 0]),
-        ("total_nanoseconds", [0, 61001001000], [2000000, 1300000], [0, 20]),
+        ("total_minutes", [0, 1], [0, 0]),
+        ("total_seconds", [0, 61], [0, 0]),
+        ("total_milliseconds", [0, 61001], [2, 1]),
+        ("total_microseconds", [0, 61001001], [2000, 1300]),
+        ("total_nanoseconds", [0, 61001001000], [2000000, 1300000]),
     ],
 )
 def test_duration_attributes_series(
@@ -71,7 +96,6 @@ def test_duration_attributes_series(
     attribute: str,
     expected_a: list[int],
     expected_b: list[int],
-    expected_c: list[int],
 ) -> None:
     if PANDAS_VERSION < (2, 2) and "pandas_pyarrow" in str(constructor_eager):
         request.applymarker(pytest.mark.xfail)
@@ -83,6 +107,32 @@ def test_duration_attributes_series(
 
     result_b = df.select(getattr(df["b"].dt, attribute)().fill_null(0))
     assert_equal_data(result_b, {"b": expected_b})
+
+
+@pytest.mark.parametrize(
+    ("attribute", "expected_c"),
+    [
+        ("total_minutes", [0, 0]),
+        ("total_seconds", [0, 0]),
+        ("total_milliseconds", [0, 0]),
+        ("total_microseconds", [0, 0]),
+        ("total_nanoseconds", [0, 20]),
+    ],
+)
+def test_duration_attributes_series_nano(
+    request: pytest.FixtureRequest,
+    constructor_eager: ConstructorEager,
+    attribute: str,
+    expected_c: list[int],
+) -> None:
+    if PANDAS_VERSION < (2, 2) and "pandas_pyarrow" in str(constructor_eager):
+        request.applymarker(pytest.mark.xfail)
+
+    pytest.importorskip("numpy")
+    import numpy as np
+
+    data = {"c": np.array([None, 20], dtype="timedelta64[ns]")}
+    df = nw.from_native(constructor_eager(data), eager_only=True)
 
     result_c = df.select(getattr(df["c"].dt, attribute)().fill_null(0))
     assert_equal_data(result_c, {"c": expected_c})
@@ -102,6 +152,10 @@ def test_duration_attributes_series(
 def test_pyarrow_units(
     unit: Literal["s", "ms", "us", "ns"], attribute: str, expected: int
 ) -> None:
+    pytest.importorskip("pyarrow")
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
     data = [None, timedelta(minutes=1, seconds=10)]
     arr = pc.cast(pa.array(data), pa.duration(unit))
     df = nw.from_native(pa.table({"a": arr}), eager_only=True)

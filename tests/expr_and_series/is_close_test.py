@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -19,7 +19,13 @@ from tests.conftest import (
     pandas_constructor,
     bodo_constructor,
 )
-from tests.utils import Constructor, ConstructorEager, assert_equal_data
+from tests.utils import (
+    PANDAS_VERSION,
+    PYARROW_VERSION,
+    Constructor,
+    ConstructorEager,
+    assert_equal_data,
+)
 
 if TYPE_CHECKING:
     from narwhals.typing import NumericLiteral
@@ -34,7 +40,7 @@ NON_NULLABLE_CONSTRUCTORS = (
 NULL_PLACEHOLDER, NAN_PLACEHOLDER = 9999.0, -1.0
 INF_POS, INF_NEG = float("inf"), float("-inf")
 
-data = {
+data: dict[str, Any] = {
     "x": [1.001, NULL_PLACEHOLDER, NAN_PLACEHOLDER, INF_POS, INF_NEG, INF_POS],
     "y": [1.005, NULL_PLACEHOLDER, NAN_PLACEHOLDER, INF_POS, 3.0, INF_NEG],
     "non_numeric": list("number"),
@@ -47,7 +53,7 @@ def test_is_close_series_raise_non_numeric(constructor_eager: ConstructorEager) 
     df = nw.from_native(constructor_eager(data), eager_only=True)
     x, y = df["non_numeric"], df["y"]
 
-    msg = "is_close operation not supported for dtype"
+    msg = "`is_close` operation not supported for dtype"
     with pytest.raises(InvalidOperationError, match=msg):
         x.is_close(y)
 
@@ -111,7 +117,7 @@ def test_is_close_series_with_series(
     rel_tol: float,
     *,
     nans_equal: bool,
-    expected: list[float],
+    expected: list[Any],
 ) -> None:
     df = nw.from_native(constructor_eager(data), eager_only=True)
     x, y = df["x"], df["y"]
@@ -124,6 +130,11 @@ def test_is_close_series_with_series(
 
     if constructor_eager in NON_NULLABLE_CONSTRUCTORS:
         expected = [v if v is not None else nans_equal for v in expected]
+    elif "pandas" in str(constructor_eager) and PANDAS_VERSION >= (3,):
+        expected = [
+            v if data["y"][i] not in {NULL_PLACEHOLDER, NAN_PLACEHOLDER} else None
+            for i, v in enumerate(expected)
+        ]
     assert_equal_data({"result": result}, {"result": expected})
 
 
@@ -135,7 +146,7 @@ def test_is_close_series_with_scalar(
     rel_tol: float,
     *,
     nans_equal: bool,
-    expected: list[float],
+    expected: list[Any],
 ) -> None:
     df = nw.from_native(constructor_eager(data), eager_only=True)
     y = df["y"]
@@ -147,6 +158,11 @@ def test_is_close_series_with_scalar(
 
     if constructor_eager in NON_NULLABLE_CONSTRUCTORS:
         expected = [v if v is not None else False for v in expected]
+    elif "pandas" in str(constructor_eager) and PANDAS_VERSION >= (3,):
+        expected = [
+            v if data["y"][i] not in {NULL_PLACEHOLDER, NAN_PLACEHOLDER} else None
+            for i, v in enumerate(expected)
+        ]
     assert_equal_data({"result": result}, {"result": expected})
 
 
@@ -159,7 +175,7 @@ def test_is_close_expr_with_expr(
     rel_tol: float,
     *,
     nans_equal: bool,
-    expected: list[float],
+    expected: list[Any],
 ) -> None:
     if "sqlframe" in str(constructor):
         # TODO(FBruzzesi): Figure out a MRE and report upstream
@@ -187,6 +203,11 @@ def test_is_close_expr_with_expr(
     )
     if constructor in NON_NULLABLE_CONSTRUCTORS:
         expected = [v if v is not None else nans_equal for v in expected]
+    elif "pandas" in str(constructor) and PANDAS_VERSION >= (3,):
+        expected = [
+            v if data["y"][i] not in {NULL_PLACEHOLDER, NAN_PLACEHOLDER} else None
+            for i, v in enumerate(expected)
+        ]
     assert_equal_data(result, {"idx": data["idx"], "result": expected})
 
 
@@ -199,7 +220,7 @@ def test_is_close_expr_with_scalar(
     rel_tol: float,
     *,
     nans_equal: bool,
-    expected: list[float],
+    expected: list[Any],
 ) -> None:
     if "sqlframe" in str(constructor):
         # TODO(FBruzzesi): Figure out a MRE and report upstream
@@ -223,4 +244,55 @@ def test_is_close_expr_with_scalar(
     )
     if constructor in NON_NULLABLE_CONSTRUCTORS:
         expected = [v if v is not None else False for v in expected]
+    elif "pandas" in str(constructor) and PANDAS_VERSION >= (3,):
+        expected = [
+            v if data["y"][i] not in {NULL_PLACEHOLDER, NAN_PLACEHOLDER} else None
+            for i, v in enumerate(expected)
+        ]
     assert_equal_data(result, {"idx": data["idx"], "result": expected})
+
+
+def test_is_close_pandas_unnamed() -> None:
+    pytest.importorskip("pandas")
+    import pandas as pd
+
+    ser = nw.from_native(pd.Series([1.1, 1.2]), series_only=True)
+    res = ser.is_close(ser)
+    assert res.name is None
+    ser = nw.from_native(pd.Series([1.1, 1.2], name="ab"), series_only=True)
+    res = ser.is_close(ser)
+    assert res.name == "ab"
+
+
+def test_issue_3474_series_decimal(constructor_eager: ConstructorEager) -> None:
+    frame = nw.from_native(constructor_eager({"a": [0, 1, 2]}))
+
+    if frame.implementation.is_pandas_like() and (
+        PYARROW_VERSION == (0, 0, 0) or PANDAS_VERSION < (2, 2)
+    ):
+        pytest.skip(reason="pyarrow is required to convert to decimal dtype")
+
+    frame = frame.with_columns(nw.col("a").cast(nw.Decimal()))
+    assert frame["a"].is_close(frame["a"]).all()
+
+
+def test_issue_3474_expr_decimal(
+    constructor: Constructor, request: pytest.FixtureRequest
+) -> None:
+    if any(x in str(constructor) for x in ("dask", "sqlframe")):
+        # TODO(FBruzzesi): Figure out a MRE and report upstream
+        reason = (
+            "SQLFrame: duckdb.duckdb.ParserException: Parser Error: syntax error at or near '='\n"
+            "Dask: Converting to Decimal dtype is not supported."
+        )
+        request.applymarker(pytest.mark.xfail(reason=reason))
+
+    frame = nw.from_native(constructor({"a": [0, 1, 2]}))
+
+    if frame.implementation.is_pandas_like() and (
+        PYARROW_VERSION == (0, 0, 0) or PANDAS_VERSION < (2, 2)
+    ):
+        pytest.skip(reason="pyarrow is required to convert to decimal dtype")
+
+    frame = frame.lazy().with_columns(nw.col("a").cast(nw.Decimal()))
+    assert frame.select((nw.col("a").is_close(nw.col("a"))).all()).collect().item()

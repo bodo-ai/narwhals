@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
-import pyarrow as pa
 import pytest
 
 import narwhals as nw
@@ -12,12 +10,15 @@ from tests.utils import (
     CUDF_VERSION,
     DASK_VERSION,
     PANDAS_VERSION,
+    POLARS_VERSION,
+    PYARROW_VERSION,
     Constructor,
     assert_equal_data,
 )
 
 if TYPE_CHECKING:
     from narwhals.dtypes import DType
+    from narwhals.typing import IntoDType, PythonLiteral
 
 
 @pytest.mark.parametrize(
@@ -36,21 +37,16 @@ def test_lit(
 
 
 def test_lit_error(constructor: Constructor) -> None:
+    pytest.importorskip("numpy")
+    import numpy as np
+
     data = {"a": [1, 3, 2], "b": [4, 4, 6], "z": [7.0, 8.0, 9.0]}
     df_raw = constructor(data)
     df = nw.from_native(df_raw).lazy()
     with pytest.raises(
         ValueError, match="numpy arrays are not supported as literal values"
     ):
-        _ = df.with_columns(nw.lit(np.array([1, 2])).alias("lit"))  # pyright: ignore[reportArgumentType]
-    with pytest.raises(
-        NotImplementedError, match="Nested datatypes are not supported yet."
-    ):
-        _ = df.with_columns(nw.lit((1, 2)).alias("lit"))  # type: ignore[arg-type]
-    with pytest.raises(
-        NotImplementedError, match="Nested datatypes are not supported yet."
-    ):
-        _ = df.with_columns(nw.lit([1, 2]).alias("lit"))  # type: ignore[arg-type]
+        _ = df.with_columns(nw.lit(np.array([1, 2])).alias("lit"))  # pyright: ignore[reportArgumentType]  # pyrefly: ignore[bad-argument-type]
 
 
 def test_lit_out_name(constructor: Constructor) -> None:
@@ -121,6 +117,8 @@ def test_date_lit(constructor: Constructor, request: pytest.FixtureRequest) -> N
         "cudf" in str(constructor) and CUDF_VERSION >= (25, 8, 0)
     ):
         request.applymarker(pytest.mark.xfail)
+    if "pandas" in str(constructor):
+        pytest.importorskip("pyarrow")
     df = nw.from_native(constructor({"a": [1]}))
     result = df.with_columns(nw.lit(date(2020, 1, 1), dtype=nw.Date)).collect_schema()
     if df.implementation.is_cudf():
@@ -131,8 +129,111 @@ def test_date_lit(constructor: Constructor, request: pytest.FixtureRequest) -> N
 
 
 def test_pyarrow_lit_string() -> None:
+    pytest.importorskip("pyarrow")
+    import pyarrow as pa
+
     df = nw.from_native(pa.table({"a": [1, 2, 3]}))
     result = df.select(nw.lit("foo")).to_native().schema.field("literal")
     assert pa.types.is_string(result.type)
     result = df.select(nw.lit("foo", dtype=nw.String)).to_native().schema.field("literal")
     assert pa.types.is_string(result.type)
+
+
+@pytest.mark.parametrize(
+    ("value", "dtype"),
+    [
+        # Empty nested structures
+        ((), nw.List(nw.Int32())),
+        ([], nw.List(nw.Int32())),
+        ({}, nw.Struct({})),
+        # Nested structures with different size from dataframe
+        (("foo", "bar"), None),
+        (["orca", "narwhal"], None),
+        ({"field_1": 42}, None),
+        # Nested structures with same size as dataframe
+        (("foo", "bar", "baz"), None),
+        (["orca", "narwhal", "penguin"], None),
+        (
+            {"field_1": 42, "field_2": 1.2, "field_3": True},
+            nw.Struct(
+                {"field_1": nw.Int32(), "field_2": nw.Float64(), "field_3": nw.Boolean()}
+            ),
+        ),
+    ],
+)
+def test_nested_structures(
+    request: pytest.FixtureRequest,
+    constructor: Constructor,
+    value: PythonLiteral,
+    dtype: IntoDType | None,
+) -> None:
+    is_empty_dict = isinstance(value, dict) and len(value) == 0
+    non_pyspark_sql_like = ("duckdb", "sqlframe", "ibis")
+    is_non_pyspark_sql_like = any(x in str(constructor) for x in non_pyspark_sql_like)
+    if is_non_pyspark_sql_like and is_empty_dict:
+        reason = "Cannot create an empty struct type for backend"
+        request.applymarker(pytest.mark.xfail(reason=reason, raises=NotImplementedError))
+
+    # TODO(FBruzzesi): Check cudf
+    if any(x in str(constructor) for x in ("cudf", "dask")):
+        reason = "Nested structures are not support for backend"
+        request.applymarker(pytest.mark.xfail(reason=reason, raises=NotImplementedError))
+
+    if any(x in str(constructor) for x in ("pandas", "modin")) and (
+        PYARROW_VERSION == (0, 0, 0) or PANDAS_VERSION < (2, 0)
+    ):  # pragma: no cover
+        reason = "Requires pyarrow and pandas 2.0+"
+        pytest.skip(reason=reason)
+
+    if (
+        "polars" in str(constructor)
+        and isinstance(value, dict)
+        and POLARS_VERSION < (1, 10, 0)
+    ):  # pragma: no cover
+        reason = "polars<1.10 does not support dict to struct in lit"
+        pytest.skip(reason=reason)
+
+    size = 3
+    data = {"a": list(range(size))}
+    expr = nw.lit(value, dtype=dtype).alias("nested")
+
+    value_ = list(value) if isinstance(value, tuple) else value
+    expected_nested = {"nested": [value_] * size}
+
+    frame = nw.from_native(constructor(data))
+
+    result_with_cols = frame.with_columns(expr)
+    assert_equal_data(result_with_cols, {**data, **expected_nested})
+
+    result_select = frame.select(expr, nw.col("a"))
+    assert_equal_data(result_select, {**expected_nested, **data})
+
+
+@pytest.mark.parametrize("value", [[], (), {}])
+def test_raise_empty_nested_structures(value: PythonLiteral) -> None:
+    msg = "Cannot infer dtype for empty nested structure. Please provide an explicit dtype parameter."
+    with pytest.raises(ValueError, match=msg):
+        nw.lit(value=value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        # List containing nested structures
+        [[1, 2], [3, 4]],
+        [(1, 2), (3, 4)],
+        [{"a": 1}, {"a": 2}],
+        # Tuple containing nested structures
+        ([1, 2], [3, 4]),
+        ((1, 2), (3, 4)),
+        ({"a": 1}, {"a": 2}),
+        # Dict containing nested structures
+        {"a": [1, 2], "b": [3, 4]},
+        {"a": (1, 2), "b": (3, 4)},
+        {"a": {"x": 1}, "b": {"y": 2}},
+    ],
+)
+def test_raise_nested_structures_with_nested_values(value: Any) -> None:
+    msg = "Nested structures with nested values are not supported."
+    with pytest.raises(NotImplementedError, match=msg):
+        nw.lit(value=value)

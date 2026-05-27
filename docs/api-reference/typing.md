@@ -35,7 +35,6 @@ Narwhals comes fully statically typed. In addition to `nw.DataFrame`, `nw.Expr`,
         - RankMethod
         - RollingInterpolationMethod
         - UniqueKeepStrategy
-        - LazyUniqueKeepStrategy
       show_source: false
       show_bases: false
 
@@ -44,7 +43,7 @@ Narwhals comes fully statically typed. In addition to `nw.DataFrame`, `nw.Expr`,
 Although some people find the former more readable, the latter is better at preserving type hints.
 
 Here's an example:
-```python
+```py
 import polars as pl
 import narwhals as nw
 from narwhals.typing import IntoDataFrameT, DataFrameT

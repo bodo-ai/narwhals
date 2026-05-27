@@ -10,11 +10,9 @@ If you've got experience with open source contributions, the following instructi
 - `cd narwhals-dev/`
 - `git remote rename origin upstream`
 - `git remote add origin <your fork goes here>`
-- `uv venv -p 3.12`
-- `. .venv/bin/activate`
-- `uv pip install -U -e . --group local-dev`
-- To run tests: `pytest`
-- To run all linting checks: `pre-commit run --all-files`
+- `uv sync --group local-dev` (creates `.venv` and installs project + dev deps)
+- To run tests: `uv run pytest`
+- To run all linting checks: `uv run pre-commit run --all-files`
 - To run static typing checks: `make typing`
 
 For more detailed and beginner-friendly instructions, see below!
@@ -101,32 +99,26 @@ If you want to run PySpark-related tests, you'll need to have Java installed. Re
 
 #### Option 1: Use UV (recommended)
 
-1. Make sure you have Python3.12 installed, create a virtual environment,
-   and activate it. If you're new to this, here's one way that we recommend:
-   1. Install uv (see [uv getting started](https://github.com/astral-sh/uv?tab=readme-ov-file#getting-started))
-      or make sure it is up-to-date with:
+1. Install uv (see [uv getting started](https://github.com/astral-sh/uv?tab=readme-ov-file#getting-started))
+   or make sure it is up-to-date with:
 
-      ```terminal
-      uv self update
-      ```
+   ```terminal
+   uv self update
+   ```
 
-   2. Install Python3.12:
+2. Set up the project. `uv sync` will create a `.venv` and install the project together with the `local-dev` dependency group (fast-ish core libraries and dev dependencies):
 
-      ```terminal
-      uv python install 3.12
-      ```
+   ```terminal
+   uv sync --group local-dev
+   ```
 
-   3. Create a virtual environment:
+   If you also want to test other libraries like Dask, PySpark, and Modin, add their extras:
 
-      ```terminal
-      uv venv -p 3.12 --seed
-      ```
+   ```terminal
+   uv sync --group local-dev --extra dask --extra pyspark --extra modin --extra bodo
+   ```
 
-   4. Activate it. On Linux, this is `. .venv/bin/activate`, on Windows `.\.venv\Scripts\activate`.
-
-2. Install Narwhals: `uv pip install -e . --group local-dev`. This will include fast-ish core libraries and dev dependencies.
-   If you also want to test other libraries like Dask , PySpark, Modin and Bodo, you can install them too with
-   `uv pip install -e ".[dask, pyspark, modin, bodo]" --group local-dev`.
+3. Either activate the venv (`. .venv/bin/activate` on Linux, `.\.venv\Scripts\activate` on Windows) so commands like `pytest` resolve from `.venv`, or prefix commands with `uv run` (e.g. `uv run pytest`).
 
 The pre-commit tool is installed as part of the local-dev dependency group. This will automatically format and lint your code before each commit, and it will block the commit if any issues are found.
 
@@ -147,18 +139,25 @@ If you add code that should be tested, please add tests.
 
 ### 7. Running tests
 
-- To run tests, run `pytest`. To check coverage: `pytest --cov=narwhals`
-- To run tests on the doctests, use `pytest narwhals --doctest-modules`
-- To run unit tests and doctests at the same time, run `pytest tests narwhals --cov=narwhals --doctest-modules`
+- To run tests, run `pytest`. To check coverage: `pytest --cov=src`
+- To run tests on the doctests, use `pytest src --doctest-modules`
+- To run unit tests and doctests at the same time, run `pytest tests narwhals --cov=src --doctest-modules`
 - To run tests multiprocessed, you may also want to use [pytest-xdist](https://github.com/pytest-dev/pytest-xdist) (optional)
 - To choose which backends to run tests with you, you can use the `--constructors` flag:
   - To only run tests for pandas, Polars, and PyArrow, use `pytest --constructors=pandas,pyarrow,polars`
   - To run tests for all CPU constructors, use `pytest --all-cpu-constructors`
   - By default, tests run for pandas, pandas (PyArrow dtypes), PyArrow, and Polars.
-  - To run tests using `cudf.pandas`, run `NARWHALS_DEFAULT_CONSTRUCTORS=pandas python -m cudf.pandas -m pytest`
-  - To run tests using `polars[gpu]`, run `NARWHALS_POLARS_GPU=1 pytest --constructors=polars[lazy]`
+  - To run tests using `cudf.pandas`, run `NARWHALS_DEFAULT_CONSTRUCTORS=pandas uv run --extra cudf --module cudf.pandas --module pytest`
+  - To run tests using `polars[gpu]`, run `NARWHALS_POLARS_GPU=1 uv run pytest --constructors="polars[lazy]"`
 
-### Backend-specific advice
+### General considerations
+
+In general we assume that dataframes are used to store and process columnar data. Therefore:
+
+- Iterating over rows in Python is never allowed. Assume that there's an infinite number of rows.
+- Iterating over columns is acceptable (though native APIs that do the iteration in a low-level language are preferred if possible!).
+
+### Backend-specific considerations
 
 - pandas:
 
@@ -175,6 +174,9 @@ If you add code that should be tested, please add tests.
       deprecated/removed, but please keep it for older pandas versions
       https://github.com/pandas-dev/pandas/pull/51466/files.
     - Instead of `rename`, prefer `alias` at the compliant level.
+  - pandas supports any hashable object as a column name, whereas other libraries tend to only support
+    strings. We tend to just type `: str` in places which accept column names, with the understanding
+    that for pandas, other data types will silently work.
 
 - Polars:
 
@@ -185,9 +187,16 @@ If you add code that should be tested, please add tests.
   - Never assume that your data is ordered in any pre-defined way.
   - Never materialise your data (only exception: `collect`).
   - Avoid calling the schema / column names unnecessarily.
-  - For DuckDB, use the Python API as much as possible, only falling
+
+- DuckDB:
+
+  In addition to the above:
+
+  - Use the Python API as much as possible, only falling
     back to SQL as the last resort for operations not yet supported
     in their Python API (e.g. `over`).
+  - Use standard SQL constructs where possible instead of non-standard
+    ones such as `GROUP BY ALL` or `EXCLUDE`.
 
 ### Test Failure Patterns
 
@@ -196,6 +205,7 @@ We aim to use three standard patterns for handling test failures:
 Note: While we're not currently totally consistent with these patterns, any efforts towards our aim are appreciated and welcome.
 
 1. `requests.applymarker(pytest.mark.xfail)`: Used for features that are planned but not yet supported. 
+   
    ```python
    def test_future_feature(request):
        request.applymarker(pytest.mark.xfail)
@@ -203,6 +213,7 @@ Note: While we're not currently totally consistent with these patterns, any effo
    ```
 
 2. `pytest.mark.skipif`: Used when there's a condition under which the test cannot run (e.g., unsupported pandas versions).
+   
    ```python
    @pytest.mark.skipif(PANDAS_VERSION < (2, 0), reason="requires pandas 2.0+")
    def test_version_dependent():
@@ -210,6 +221,7 @@ Note: While we're not currently totally consistent with these patterns, any effo
    ```
 
 3. `pytest.raises`: Used for testing that code raises expected exceptions.
+   
    ```python
    def test_invalid_input():
        with pytest.raises(ValueError, match="expected error message"):
@@ -217,17 +229,6 @@ Note: While we're not currently totally consistent with these patterns, any effo
    ```
 
 Document clear reasons in test comments for any skip/xfail patterns to help maintain test clarity.
-
-If you want to have less surprises when opening a PR, you can take advantage of [nox](https://nox.thea.codes/en/stable/index.html) to run the entire CI/CD test suite locally in your operating system.
-
-To do so, you will first need to install nox and then run the `nox` command in the root of the repository:
-
-```bash
-python -m pip install nox  # python -m pip install "nox[uv]"
-nox
-```
-
-Notice that nox will also require to have all the python versions that are defined in the `noxfile.py` installed in your system.
 
 #### Hypothesis tests
 
@@ -238,10 +239,10 @@ run them by passing the `--runslow` flag to PyTest.
 #### Testing Dask and Modin
 
 To keep local development test times down, Dask and Modin are excluded from dev
-dependencies, and their tests only run in CI. If you install them with
+dependencies, and their tests only run in CI. If you re-sync with their extras:
 
 ```terminal
-uv pip install -U dask[dataframe] modin
+uv sync --group local-dev --extra dask --extra modin --extra bodo
 ```
 
 then their tests will run too.
@@ -255,8 +256,10 @@ We can't currently test in CI against cuDF, but you can test it manually in Kagg
 We run both `mypy` and `pyright` in CI. Both of these tools are included when installing Narwhals with the local-dev dependency group.
 
 Run them with:
-- `mypy narwhals tests`
-- `pyright narwhals tests`
+
+```console
+make typing
+```
 
 to verify type completeness / correctness.
 
@@ -293,9 +296,20 @@ Full discussion at [narwhals#1943](https://github.com/narwhals-dev/narwhals/issu
 
 ### 9. Building the docs
 
-To build the docs, run `mkdocs serve`, and then open the link provided in a browser.
-The docs should refresh when you make changes. If they don't, press `ctrl+C`, and then
-do `mkdocs build` and then `mkdocs serve`.
+To serve the docs locally, run:
+  
+  ```terminal
+  make docs-serve
+  ```
+
+and then open the link provided in a browser.
+
+The docs should refresh when you make changes. If they don't, press `ctrl+C`, and then run:
+
+```terminal
+  uv run --group docs zensical build --clean
+  make docs-serve
+  ```
 
 ### 10. Pull requests
 
