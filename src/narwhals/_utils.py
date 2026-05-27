@@ -617,6 +617,7 @@ def is_pyspark_pre_4(implementation: Implementation) -> bool:
 MIN_VERSIONS: Mapping[Implementation, tuple[int, ...]] = {
     Implementation.PANDAS: (1, 3, 4),
     Implementation.MODIN: (0, 22, 0),
+    Implementation.BODO: (1,),
     Implementation.CUDF: (24, 10),
     Implementation.PYARROW: (13,),
     Implementation.PYSPARK: (3, 5),
@@ -631,6 +632,7 @@ MIN_VERSIONS: Mapping[Implementation, tuple[int, ...]] = {
 _IMPLEMENTATION_TO_MODULE_NAME: Mapping[Implementation, str] = {
     Implementation.DASK: "dask.dataframe",
     Implementation.MODIN: "modin.pandas",
+    Implementation.BODO: "bodo.pandas",
     Implementation.PYSPARK: "pyspark.sql",
     Implementation.PYSPARK_CONNECT: "pyspark.sql.connect",
 }

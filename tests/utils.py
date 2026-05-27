@@ -216,6 +216,16 @@ def maybe_get_modin_df(df_pandas: pd.DataFrame) -> Any:  # pragma: no cover
             return mpd.DataFrame(df_pandas.to_dict(orient="list"))
 
 
+def maybe_get_bodo_df(df_pandas: pd.DataFrame) -> Any:  # pragma: no cover
+    """Convert a pandas DataFrame to a Bodo DataFrame if Bodo is available."""
+    try:
+        import bodo.pandas as bd
+    except ImportError:  # pragma: no cover
+        return df_pandas.copy()
+    else:
+        return bd.DataFrame(df_pandas)
+
+
 def is_windows() -> bool:
     """Check if the current platform is Windows."""
     return sys.platform in {"win32", "cygwin"}
