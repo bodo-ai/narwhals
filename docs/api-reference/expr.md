@@ -8,8 +8,11 @@
         - alias
         - all
         - any
+        - any_value
         - cast
+        - ceil
         - clip
+        - cos
         - count
         - cum_count
         - cum_max
@@ -23,6 +26,8 @@
         - fill_nan
         - fill_null
         - filter
+        - first
+        - floor
         - is_between
         - is_close
         - is_duplicated
@@ -34,6 +39,7 @@
         - is_null
         - is_unique
         - kurtosis
+        - last
         - len
         - log
         - map_batches
@@ -55,6 +61,7 @@
         - rolling_var
         - round
         - shift
+        - sin
         - skew
         - sqrt
         - std

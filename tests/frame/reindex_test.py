@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import pandas as pd
 import pytest
+
+pytest.importorskip("pandas")
+import pandas as pd
 
 import narwhals as nw
 from narwhals.exceptions import MultiOutputExpressionError
@@ -25,7 +27,7 @@ def test_reindex(df_raw: Any) -> None:
     assert result_s[1]
     assert not result_s[2]
     result = df.with_columns(s.sort())
-    expected = {"a": [1, 2, 3], "b": [4, 4, 6], "z": [7.0, 8.0, 9.0]}  # type: ignore[list-item]
+    expected = {"a": [1, 2, 3], "b": [4, 4, 6], "z": [7.0, 8.0, 9.0]}
     assert_equal_data(result, expected)
     with pytest.raises(MultiOutputExpressionError):
         nw.to_native(df.with_columns(nw.all() + nw.all()))

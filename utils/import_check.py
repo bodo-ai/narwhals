@@ -57,7 +57,7 @@ class ImportPandasChecker(ast.NodeVisitor):
                 and alias.name not in self.allowed_imports
                 and "# ignore-banned-import" not in self.lines[node.lineno - 1]
             ):
-                print(  # noqa: T201
+                print(
                     f"{self.file_name}:{node.lineno}:{node.col_offset}: found {alias.name} import"
                 )
                 self.found_import = True
@@ -70,7 +70,7 @@ class ImportPandasChecker(ast.NodeVisitor):
             and "# ignore-banned-import" not in self.lines[node.lineno - 1]
             and node.module not in self.allowed_imports
         ):
-            print(  # noqa: T201
+            print(
                 f"{self.file_name}:{node.lineno}:{node.col_offset}: found {node.module} import"
             )
             self.found_import = True

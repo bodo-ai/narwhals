@@ -4,26 +4,28 @@ import math
 import os
 import sys
 import warnings
+from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, cast
+from typing import TYPE_CHECKING, Any, cast
 
-import pandas as pd
-import pyarrow as pa
+import pytest
 
 import narwhals as nw
-from narwhals._utils import Implementation, parse_version, zip_strict
+from narwhals._utils import Implementation, parse_version
+from narwhals.dependencies import get_pandas
 from narwhals.translate import from_native
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+    from typing import TypeAlias
 
-    import pytest
+    import pandas as pd
     from pyspark.sql import SparkSession
     from sqlframe.duckdb import DuckDBSession
-    from typing_extensions import TypeAlias
 
-    from narwhals.typing import Frame, NativeDataFrame, NativeLazyFrame, TimeUnit
+    from narwhals._native import NativeLazyFrame
+    from narwhals.typing import Frame, IntoDataFrame, TimeUnit
 
 
 def get_module_version_as_tuple(module_name: str) -> tuple[int, ...]:
@@ -43,13 +45,16 @@ PYARROW_VERSION: tuple[int, ...] = get_module_version_as_tuple("pyarrow")
 PYSPARK_VERSION: tuple[int, ...] = get_module_version_as_tuple("pyspark")
 CUDF_VERSION: tuple[int, ...] = get_module_version_as_tuple("cudf")
 
-Constructor: TypeAlias = Callable[[Any], "NativeLazyFrame | NativeDataFrame"]
-ConstructorEager: TypeAlias = Callable[[Any], "NativeDataFrame"]
+Constructor: TypeAlias = Callable[[Any], "NativeLazyFrame | IntoDataFrame"]
+ConstructorEager: TypeAlias = Callable[[Any], "IntoDataFrame"]
 ConstructorLazy: TypeAlias = Callable[[Any], "NativeLazyFrame"]
 ConstructorPandasLike: TypeAlias = Callable[[Any], "pd.DataFrame"]
 
+NestedOrEnumDType: TypeAlias = "nw.List | nw.Array | nw.Struct | nw.Enum"
+"""`DType`s which **cannot** be used as bare types."""
+
 ID_PANDAS_LIKE = frozenset(
-    ("pandas", "pandas[nullable]", "pandas[pyarrow]", "modin", "modin[pyarrow]", "cudf", "bodo")
+    ("pandas", "pandas[nullable]", "pandas[pyarrow]", "modin", "modin[pyarrow]", "cudf")
 )
 ID_CUDF = frozenset(("cudf",))
 _CONSTRUCTOR_FIXTURE_NAMES = frozenset[str](
@@ -58,12 +63,13 @@ _CONSTRUCTOR_FIXTURE_NAMES = frozenset[str](
 
 
 def _to_comparable_list(column_values: Any) -> Any:
-    if isinstance(column_values, nw.Series) and isinstance(
-        column_values.to_native(), pa.Array
-    ):  # pragma: no cover
-        # Narwhals Series for PyArrow should be backed by ChunkedArray, not Array.
-        msg = "Did not expect to see Arrow Array here"
-        raise TypeError(msg)
+    if isinstance(column_values, nw.Series) and column_values.implementation.is_pyarrow():
+        import pyarrow as pa
+
+        if isinstance(column_values.to_native(), pa.Array):  # pragma: no cover
+            # Narwhals Series for PyArrow should be backed by ChunkedArray, not Array.
+            msg = "Did not expect to see Arrow Array here"
+            raise TypeError(msg)
     if (
         hasattr(column_values, "_compliant_series")
         and column_values._compliant_series._implementation is Implementation.CUDF
@@ -72,6 +78,10 @@ def _to_comparable_list(column_values: Any) -> Any:
     if hasattr(column_values, "to_list"):
         return column_values.to_list()
     return list(column_values)
+
+
+def is_pd_na(value: Any) -> bool:
+    return (pd := get_pandas()) is not None and pd.isna(value)
 
 
 def assert_equal_data(result: Any, expected: Mapping[str, Any]) -> None:
@@ -89,7 +99,7 @@ def assert_equal_data(result: Any, expected: Mapping[str, Any]) -> None:
     )
     if is_duckdb:
         result = from_native(result.collect("pyarrow"))
-    if is_ibis:
+    if is_ibis:  # pragma: no cover
         result = from_native(result.to_native().to_pyarrow())
     if hasattr(result, "collect"):
         kwargs: dict[Implementation, dict[str, Any]] = {Implementation.POLARS: {}}
@@ -97,13 +107,13 @@ def assert_equal_data(result: Any, expected: Mapping[str, Any]) -> None:
         if os.environ.get("NARWHALS_POLARS_GPU", None):  # pragma: no cover
             kwargs[Implementation.POLARS].update({"engine": "gpu"})
         if os.environ.get("NARWHALS_POLARS_NEW_STREAMING", None):  # pragma: no cover
-            kwargs[Implementation.POLARS].update({"new_streaming": True})
+            kwargs[Implementation.POLARS].update({"engine": "streaming"})
 
         result = result.collect(**kwargs.get(result.implementation, {}))
 
     if hasattr(result, "columns"):
         for idx, (col, key) in enumerate(
-            zip_strict(result.columns, list(expected.keys()))
+            zip(result.columns, list(expected.keys()), strict=True)
         ):
             assert col == key, f"Expected column name {key} at index {idx}, found {col}"
     result = {key: _to_comparable_list(result[key]) for key in expected}
@@ -113,23 +123,24 @@ def assert_equal_data(result: Any, expected: Mapping[str, Any]) -> None:
 
     for key, expected_value in expected.items():
         result_value = result[key]
-        for i, (lhs, rhs) in enumerate(zip_strict(result_value, expected_value)):
+        for i, (lhs, rhs) in enumerate(zip(result_value, expected_value, strict=True)):
             if isinstance(lhs, float) and not math.isnan(lhs):
                 are_equivalent_values = rhs is not None and math.isclose(
                     lhs, rhs, rel_tol=0, abs_tol=1e-6
                 )
             elif isinstance(lhs, float) and math.isnan(lhs):
-                are_equivalent_values = rhs is None or rhs is pd.NA or math.isnan(rhs)
+                are_equivalent_values = rhs is None or math.isnan(rhs)
             elif isinstance(rhs, float) and math.isnan(rhs):
-                are_equivalent_values = lhs is None or lhs is pd.NA or math.isnan(lhs)
+                are_equivalent_values = lhs is None or is_pd_na(lhs) or math.isnan(lhs)
             elif lhs is None:
                 are_equivalent_values = rhs is None
             elif isinstance(lhs, list) and isinstance(rhs, list):
                 are_equivalent_values = all(
-                    left_side == right_side for left_side, right_side in zip(lhs, rhs)
+                    left_side == right_side
+                    for left_side, right_side in zip(lhs, rhs, strict=False)
                 )
-            elif pd.isna(lhs):
-                are_equivalent_values = pd.isna(rhs)
+            elif is_pd_na(lhs):
+                are_equivalent_values = is_pd_na(rhs)
             elif type(lhs) is date and type(rhs) is datetime:
                 are_equivalent_values = datetime(lhs.year, lhs.month, lhs.day) == rhs
             elif (
@@ -147,7 +158,7 @@ def assert_equal_data(result: Any, expected: Mapping[str, Any]) -> None:
                 are_equivalent_values = lhs == rhs
 
             assert are_equivalent_values, (
-                f"Mismatch at index {i}: {lhs} != {rhs}\nExpected: {expected}\nGot: {result}"
+                f"Mismatch at index {i}, key {key}: {lhs} != {rhs}\nExpected: {expected}\nGot: {result}"
             )
 
 
@@ -155,6 +166,14 @@ def assert_equal_series(
     result: nw.Series[Any], expected: Sequence[Any], name: str
 ) -> None:
     assert_equal_data(result.to_frame(), {name: expected})
+
+
+def assert_equal_hash(left: Any, right: Any) -> None:
+    """Assert that left and right produce identical hash values."""
+    __tracebackhide__ = True
+    assert left in {right}, (  # noqa: FURB171
+        f"inputs do not compare equal by `__hash__`\n[left]: {left}\n[right]: {right}"
+    )
 
 
 def sqlframe_session() -> DuckDBSession:
@@ -177,14 +196,15 @@ def pyspark_session() -> SparkSession:  # pragma: no cover
         else builder.master("local[1]").config("spark.ui.enabled", "false")
     )
     return (
-        builder.config("spark.default.parallelism", "1")
+        # Don't remove pyrefly-ignore, needed in CI when pyspark is installed.
+        builder.config("spark.default.parallelism", "1")  # pyrefly: ignore[bad-return]
         .config("spark.sql.shuffle.partitions", "2")
         .config("spark.sql.session.timeZone", "UTC")
         .getOrCreate()
     )
 
 
-def maybe_get_modin_df(df_pandas: pd.DataFrame) -> Any:
+def maybe_get_modin_df(df_pandas: pd.DataFrame) -> Any:  # pragma: no cover
     """Convert a pandas DataFrame to a Modin DataFrame if Modin is available."""
     try:
         import modin.pandas as mpd
@@ -196,16 +216,14 @@ def maybe_get_modin_df(df_pandas: pd.DataFrame) -> Any:
             return mpd.DataFrame(df_pandas.to_dict(orient="list"))
 
 
-def maybe_get_bodo_df(df_pandas: pd.DataFrame) -> Any:
+def maybe_get_bodo_df(df_pandas: pd.DataFrame) -> Any:  # pragma: no cover
     """Convert a pandas DataFrame to a Bodo DataFrame if Bodo is available."""
     try:
         import bodo.pandas as bd
     except ImportError:  # pragma: no cover
         return df_pandas.copy()
     else:
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=UserWarning)
-            return bd.DataFrame(df_pandas)
+        return bd.DataFrame(df_pandas)
 
 
 def is_windows() -> bool:
@@ -256,3 +274,15 @@ def time_unit_compat(time_unit: TimeUnit, request: pytest.FixtureRequest, /) -> 
     if PANDAS_VERSION < (2,) and any(name in request_id for name in pandas_like):
         return "ns"
     return time_unit
+
+
+def is_pyspark_connect(constructor: Constructor) -> bool:
+    is_spark_connect = bool(os.environ.get("SPARK_CONNECT", None))
+    return is_spark_connect and ("pyspark" in str(constructor))
+
+
+def xfail_if_pyspark_connect(  # pragma: no cover
+    constructor: Constructor, request: pytest.FixtureRequest, reason: str = ""
+) -> None:
+    if is_pyspark_connect(constructor):
+        request.applymarker(pytest.mark.xfail(reason=reason))

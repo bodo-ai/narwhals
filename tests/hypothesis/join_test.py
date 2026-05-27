@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from hypothesis import assume, given, strategies as st
-from pandas.testing import assert_frame_equal
 
 import narwhals as nw
 from tests.utils import PANDAS_VERSION, POLARS_VERSION, assert_equal_data
@@ -16,6 +16,7 @@ pytest.importorskip("pyarrow")
 import pandas as pd
 import polars as pl
 import pyarrow as pa
+from pandas.testing import assert_frame_equal
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -44,6 +45,9 @@ def test_join(  # pragma: no cover
     floats: st.SearchStrategy[list[float]],
     cols: st.SearchStrategy[list[str]],
 ) -> None:
+    # See https://github.com/narwhals-dev/narwhals/issues/3554
+    # for why we need to assume that all float values are finite
+    assume(all(math.isfinite(f) for f in cast("list[float]", floats)))
     data: Mapping[str, Any] = {"a": integers, "b": other_integers, "c": floats}
     join_cols = cast("list[str]", cols)
 

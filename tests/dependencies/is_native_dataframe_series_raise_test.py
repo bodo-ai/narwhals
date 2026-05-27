@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
-import pandas as pd
 import pytest
+
+pytest.importorskip("pandas")
+import pandas as pd
 
 import narwhals as nw
 from narwhals.dependencies import (
@@ -24,6 +26,9 @@ from narwhals.dependencies import (
     is_bodo_dataframe,
     is_bodo_series,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @pytest.mark.parametrize(

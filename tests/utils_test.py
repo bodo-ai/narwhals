@@ -4,19 +4,15 @@ import re
 import string
 from dataclasses import dataclass
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Callable, Protocol, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, cast
 
 import hypothesis.strategies as st
-import pandas as pd
-import pyarrow as pa
 import pytest
 from hypothesis import given
-from pandas.testing import assert_frame_equal, assert_index_equal, assert_series_equal
 
 import narwhals as nw
 from narwhals._utils import (
     Implementation,
-    Version,
     _DeferredIterable,
     check_columns_exist,
     deprecate_native_namespace,
@@ -25,12 +21,17 @@ from narwhals._utils import (
 )
 from tests.utils import get_module_version_as_tuple
 
+pytest.importorskip("pandas")
+import pandas as pd
+from pandas.testing import assert_frame_equal, assert_index_equal, assert_series_equal
+
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
     from types import ModuleType
 
     from typing_extensions import Self
 
+    from narwhals._compliant.typing import Accessor
     from narwhals._utils import _SupportsVersion
     from narwhals.series import Series
 
@@ -132,9 +133,11 @@ def test_maybe_set_index_pandas_direct_index(
     df = nw.from_native(native_df_or_series, allow_series=True)
     result = nw.maybe_set_index(df, index=narwhals_index)
     if isinstance(native_df_or_series, pd.Series):
+        assert isinstance(result, nw.Series)
         native_df_or_series.index = pandas_index  # type: ignore[assignment]
         assert_series_equal(nw.to_native(result), native_df_or_series)
     else:
+        assert isinstance(result, nw.DataFrame)
         expected = native_df_or_series.set_index(pandas_index)  # type: ignore[arg-type]
         assert_frame_equal(nw.to_native(result), expected)
 
@@ -282,6 +285,17 @@ def test_generate_temporary_column_name(n_bytes: int) -> None:
     assert temp_col_name not in columns
 
 
+@pytest.mark.parametrize("_idx", [1, 2])
+def test_generate_temporary_column_name_prefix(_idx: int) -> None:
+    columns = ["abc", "XYZ"]
+    prefix = columns[0][:_idx]
+
+    temp_col_name = nw.generate_temporary_column_name(
+        n_bytes=2, columns=columns, prefix=prefix
+    )
+    assert temp_col_name not in columns
+
+
 def test_generate_temporary_column_name_raise() -> None:
     from itertools import product
 
@@ -297,6 +311,22 @@ def test_generate_temporary_column_name_raise() -> None:
         match="Internal Error: Narwhals was not able to generate a column name with ",
     ):
         nw.generate_temporary_column_name(n_bytes=1, columns=columns)
+
+
+def test_generate_temporary_column_name_pr_3118_example() -> None:
+    from tests.utils import DUCKDB_VERSION
+
+    if DUCKDB_VERSION < (1, 3, 0):
+        pytest.skip()
+
+    import duckdb
+
+    conn = duckdb.connect()
+    conn.sql("""CREATE TABLE df (a int64, b int64);""")
+
+    df = nw.from_native(conn.table("df"))
+    sql = df.unique("b", keep="any").select("a").to_native().sql_query()
+    assert "AS row_index_" in sql
 
 
 @pytest.mark.parametrize(
@@ -330,6 +360,9 @@ def test_check_columns_exists() -> None:
 
 
 def test_not_implemented() -> None:
+    pytest.importorskip("pyarrow")
+    import pyarrow as pa
+
     pytest.importorskip("polars")
 
     from narwhals._arrow.expr import ArrowExpr
@@ -377,13 +410,13 @@ def test_not_implemented() -> None:
         unique = not_implemented()
 
         # NOTE: Only `mypy` has an issue with this?
-        # error: Cannot override writeable attribute with read-only property
+        # error: Cannot override writable attribute with read-only property
         @property
         def str(self) -> PolarsExprStringNamespace:  # type: ignore[override]
             pl_expr = cast("PolarsExpr", self)
             return PolarsExprStringNamespace(pl_expr)
 
-        dt = not_implemented()
+        dt: Any = not_implemented()
 
         # NOTE: Typing is happy w/ double property
         @property
@@ -495,9 +528,25 @@ def test_deprecate_native_namespace() -> None:
 
 
 def test_requires() -> None:
+    class SomeAccessor:
+        _accessor: ClassVar[Accessor] = "str"
+
+        def __init__(self, compliant: ProbablyCompliant) -> None:
+            self._compliant: ProbablyCompliant = compliant
+
+        @property
+        def compliant(self) -> ProbablyCompliant:
+            return self._compliant
+
+        def waddle(self) -> str:
+            return f"waddle<{self.compliant.native}>waddle"
+
+        @requires.backend_version((1, 8, 0))
+        def nope(self) -> str:
+            return "nooooooooooooooooooooooooooo"
+
     class ProbablyCompliant:
         _implementation: Implementation = Implementation.POLARS
-        _version: Version = Version.MAIN
 
         def __init__(self, native_obj: str, backend_version: tuple[int, ...]) -> None:
             self._native_obj: str = native_obj
@@ -518,6 +567,10 @@ def test_requires() -> None:
         @requires.backend_version((3, 0, 0))
         def repeat(self, n: int) -> str:
             return self.native * n
+
+        @property
+        def str(self) -> SomeAccessor:
+            return SomeAccessor(self)
 
     v_05 = ProbablyCompliant("123", (0, 5))
     v_201 = ProbablyCompliant("123", (2, 0, 1))
@@ -546,6 +599,15 @@ def test_requires() -> None:
     )
     with pytest.raises(NotImplementedError, match=pattern):
         v_05.concat("never")
+
+    waddled = v_201.str.waddle()
+    assert waddled == "waddle<123>waddle"
+    assert v_05.str.waddle() == waddled
+    noped = v_201.str.nope()
+    assert noped == "nooooooooooooooooooooooooooo"
+    match = r"`str\.nope`.+\'polars>=1.8.0\'.+found.+\'0.5\'"
+    with pytest.raises(NotImplementedError, match=match):
+        v_05.str.nope()
 
 
 def test_deferred_iterable() -> None:

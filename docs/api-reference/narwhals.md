@@ -13,9 +13,12 @@ Here are the top-level functions available in Narwhals.
         - col
         - concat
         - concat_str
+        - corr
         - exclude
+        - format
         - from_arrow
         - from_dict
+        - from_dicts
         - from_native
         - from_numpy
         - generate_temporary_column_name
@@ -42,9 +45,10 @@ Here are the top-level functions available in Narwhals.
         - read_parquet
         - scan_csv
         - scan_parquet
+        - show_versions
+        - struct
         - sum
         - sum_horizontal
-        - show_versions
         - to_native
         - to_py_scalar
         - when

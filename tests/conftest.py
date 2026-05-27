@@ -5,31 +5,36 @@ import uuid
 from copy import deepcopy
 from functools import lru_cache
 from importlib.util import find_spec
-from typing import TYPE_CHECKING, Any, Callable, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+import narwhals as nw
 from narwhals._utils import Implementation, generate_temporary_column_name
 from tests.utils import ID_PANDAS_LIKE, PANDAS_VERSION, pyspark_session, sqlframe_session
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+    from typing import TypeAlias
 
-    import duckdb
     import ibis
     import pandas as pd
     import polars as pl
     import pyarrow as pa
     from ibis.backends.duckdb import Backend as IbisDuckDBBackend
-    from pyspark.sql import DataFrame as PySparkDataFrame
-    from typing_extensions import TypeAlias
 
-    from narwhals._spark_like.dataframe import SQLFrameDataFrame
+    from narwhals._native import NativeDask, NativeDuckDB, NativePySpark, NativeSQLFrame
     from narwhals._typing import EagerAllowed
-    from narwhals.typing import NativeDataFrame, NativeLazyFrame
-    from tests.utils import Constructor, ConstructorEager, ConstructorLazy
+    from narwhals.typing import IntoDataFrame, NonNestedDType
+    from tests.utils import (
+        Constructor,
+        ConstructorEager,
+        ConstructorLazy,
+        NestedOrEnumDType,
+    )
 
     Data: TypeAlias = "dict[str, list[Any]]"
+
 
 MIN_PANDAS_NULLABLE_VERSION = (2,)
 
@@ -43,7 +48,7 @@ if default_constructors := os.environ.get(
     DEFAULT_CONSTRUCTORS = default_constructors
 else:
     DEFAULT_CONSTRUCTORS = (
-        "pandas,pandas[pyarrow],polars[eager],pyarrow,duckdb,sqlframe,ibis,bodo"
+        "pandas,pandas[pyarrow],polars[eager],pyarrow,duckdb,sqlframe,ibis"
     )
 
 
@@ -56,6 +61,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         default=False,
         help="run tests with all cpu constructors",
+    )
+    parser.addoption(
+        "--use-external-constructor",
+        action="store_true",
+        default=False,
+        help="run tests with external constructor",
     )
     parser.addoption(
         "--constructors",
@@ -95,43 +106,45 @@ def pandas_nullable_constructor(obj: Data) -> pd.DataFrame:
 
 
 def pandas_pyarrow_constructor(obj: Data) -> pd.DataFrame:
+    pytest.importorskip("pyarrow")
     import pandas as pd
 
     return pd.DataFrame(obj).convert_dtypes(dtype_backend="pyarrow")
 
 
-def modin_constructor(obj: Data) -> NativeDataFrame:  # pragma: no cover
+def modin_constructor(obj: Data) -> IntoDataFrame:  # pragma: no cover
     import modin.pandas as mpd
     import pandas as pd
 
     df = mpd.DataFrame(pd.DataFrame(obj))
-    return cast("NativeDataFrame", df)
+    return cast("IntoDataFrame", df)
 
 
-def modin_pyarrow_constructor(obj: Data) -> NativeDataFrame:  # pragma: no cover
+def modin_pyarrow_constructor(obj: Data) -> IntoDataFrame:  # pragma: no cover
     import modin.pandas as mpd
     import pandas as pd
 
     df = mpd.DataFrame(pd.DataFrame(obj)).convert_dtypes(dtype_backend="pyarrow")
-    return cast("NativeDataFrame", df)
+    return cast("IntoDataFrame", df)
 
 
-def bodo_constructor(obj: Data) -> NativeDataFrame:  # pragma: no cover
+def cudf_constructor(obj: Data) -> IntoDataFrame:  # pragma: no cover
+    import cudf
+
+    df = cudf.DataFrame(obj)
+    return cast("IntoDataFrame", df)
+
+
+def bodo_constructor(obj: Data) -> IntoDataFrame:  # pragma: no cover
     import bodo.pandas as bd
     import pandas as pd
 
     df = bd.DataFrame(pd.DataFrame(obj))
-    return cast("NativeDataFrame", df)
-
-
-def cudf_constructor(obj: Data) -> NativeDataFrame:  # pragma: no cover
-    import cudf
-
-    df = cudf.DataFrame(obj)
-    return cast("NativeDataFrame", df)
+    return cast("IntoDataFrame", df)
 
 
 def polars_eager_constructor(obj: Data) -> pl.DataFrame:
+    pytest.importorskip("polars")
     import polars as pl
 
     return pl.DataFrame(obj)
@@ -143,35 +156,38 @@ def polars_lazy_constructor(obj: Data) -> pl.LazyFrame:
     return pl.LazyFrame(obj)
 
 
-def duckdb_lazy_constructor(obj: Data) -> duckdb.DuckDBPyRelation:
+def duckdb_lazy_constructor(obj: dict[str, Any]) -> NativeDuckDB:
+    pytest.importorskip("duckdb")
+    pytest.importorskip("pyarrow")
     import duckdb
-    import polars as pl
+    import pyarrow as pa
 
     duckdb.sql("""set timezone = 'UTC'""")
 
-    _df = pl.LazyFrame(obj)
-    return duckdb.table("_df")
+    _df = pa.table(obj)
+    return duckdb.sql("select * from _df")
 
 
-def dask_lazy_p1_constructor(obj: Data) -> NativeLazyFrame:  # pragma: no cover
+def dask_lazy_p1_constructor(obj: Data) -> NativeDask:  # pragma: no cover
     import dask.dataframe as dd
 
-    return cast("NativeLazyFrame", dd.from_dict(obj, npartitions=1))
+    return cast("NativeDask", dd.from_dict(obj, npartitions=1))
 
 
-def dask_lazy_p2_constructor(obj: Data) -> NativeLazyFrame:  # pragma: no cover
+def dask_lazy_p2_constructor(obj: Data) -> NativeDask:  # pragma: no cover
     import dask.dataframe as dd
 
-    return cast("NativeLazyFrame", dd.from_dict(obj, npartitions=2))
+    return cast("NativeDask", dd.from_dict(obj, npartitions=2))
 
 
 def pyarrow_table_constructor(obj: dict[str, Any]) -> pa.Table:
+    pytest.importorskip("pyarrow")
     import pyarrow as pa
 
     return pa.table(obj)
 
 
-def pyspark_lazy_constructor() -> Callable[[Data], PySparkDataFrame]:  # pragma: no cover
+def pyspark_lazy_constructor() -> Callable[[Data], NativePySpark]:  # pragma: no cover
     pytest.importorskip("pyspark")
     import warnings
     from atexit import register
@@ -186,24 +202,28 @@ def pyspark_lazy_constructor() -> Callable[[Data], PySparkDataFrame]:  # pragma:
 
         register(session.stop)
 
-        def _constructor(obj: Data) -> PySparkDataFrame:
+        def _constructor(obj: Data) -> NativePySpark:
             _obj = deepcopy(obj)
             index_col_name = generate_temporary_column_name(n_bytes=8, columns=list(_obj))
             _obj[index_col_name] = list(range(len(_obj[next(iter(_obj))])))
-
-            return (
-                session.createDataFrame([*zip(*_obj.values())], schema=[*_obj.keys()])
+            result = (
+                session.createDataFrame(
+                    [*zip(*_obj.values(), strict=False)], schema=[*_obj.keys()]
+                )
                 .repartition(2)
                 .orderBy(index_col_name)
                 .drop(index_col_name)
             )
+            return cast("NativePySpark", result)
 
         return _constructor
 
 
-def sqlframe_pyspark_lazy_constructor(obj: Data) -> SQLFrameDataFrame:  # pragma: no cover
+def sqlframe_pyspark_lazy_constructor(obj: Data) -> NativeSQLFrame:  # pragma: no cover
+    pytest.importorskip("sqlframe")
+    pytest.importorskip("duckdb")
     session = sqlframe_session()
-    return session.createDataFrame([*zip(*obj.values())], schema=[*obj.keys()])
+    return session.createDataFrame([*zip(*obj.values(), strict=False)], schema=list(obj))
 
 
 @lru_cache(maxsize=1)
@@ -215,9 +235,11 @@ def _ibis_backend() -> IbisDuckDBBackend:  # pragma: no cover
 
 
 def ibis_lazy_constructor(obj: Data) -> ibis.Table:  # pragma: no cover
+    pytest.importorskip("ibis")
+    pytest.importorskip("polars")
     import polars as pl
 
-    ldf = pl.from_dict(obj).lazy()
+    ldf = pl.LazyFrame(obj)
     table_name = str(uuid.uuid4())
     return _ibis_backend().create_table(table_name, ldf)
 
@@ -229,11 +251,11 @@ EAGER_CONSTRUCTORS: dict[str, ConstructorEager] = {
     "pyarrow": pyarrow_table_constructor,
     "modin": modin_constructor,
     "modin[pyarrow]": modin_pyarrow_constructor,
-    "bodo": bodo_constructor,
     "cudf": cudf_constructor,
+    "bodo": bodo_constructor,
     "polars[eager]": polars_eager_constructor,
 }
-LAZY_CONSTRUCTORS: dict[str, ConstructorLazy] = {
+LAZY_CONSTRUCTORS: dict[str, ConstructorLazy] = {  # pyrefly: ignore[bad-assignment]
     "dask": dask_lazy_p2_constructor,
     "polars[lazy]": polars_lazy_constructor,
     "duckdb": duckdb_lazy_constructor,
@@ -245,6 +267,8 @@ GPU_CONSTRUCTORS: dict[str, ConstructorEager] = {"cudf": cudf_constructor}
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    if metafunc.config.getoption("use_external_constructor"):  # pragma: no cover
+        return  # let the plugin handle this
     if metafunc.config.getoption("all_cpu_constructors"):  # pragma: no cover
         selected_constructors: list[str] = [
             *iter(EAGER_CONSTRUCTORS.keys()),
@@ -298,7 +322,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     elif "constructor_pandas_like" in metafunc.fixturenames:
         pandas_like_constructors = []
         pandas_like_constructors_ids = []
-        for fn, name in zip(eager_constructors, eager_constructors_ids):
+        for fn, name in zip(eager_constructors, eager_constructors_ids, strict=False):
             if name in ID_PANDAS_LIKE:
                 pandas_like_constructors.append(fn)
                 pandas_like_constructors_ids.append(name)
@@ -330,3 +354,50 @@ def eager_backend(request: pytest.FixtureRequest) -> EagerAllowed:
 def eager_implementation(request: pytest.FixtureRequest) -> EagerAllowed:
     """Use if a test is heavily parametric, skips `str` backend."""
     return request.param  # type: ignore[no-any-return]
+
+
+@pytest.fixture(
+    params=[
+        nw.Boolean,
+        nw.Categorical,
+        nw.Date,
+        nw.Datetime,
+        nw.Decimal,
+        nw.Duration,
+        nw.Float32,
+        nw.Float64,
+        nw.Int8,
+        nw.Int16,
+        nw.Int32,
+        nw.Int64,
+        nw.Int128,
+        nw.Object,
+        nw.String,
+        nw.Time,
+        nw.UInt8,
+        nw.UInt16,
+        nw.UInt32,
+        nw.UInt64,
+        nw.UInt128,
+        nw.Unknown,
+        nw.Binary,
+    ],
+    ids=lambda tp: tp.__name__,
+)
+def non_nested_type(request: pytest.FixtureRequest) -> type[NonNestedDType]:
+    tp_dtype: type[NonNestedDType] = request.param
+    return tp_dtype
+
+
+@pytest.fixture(
+    params=[
+        nw.List(nw.Float32),
+        nw.Array(nw.String, 2),
+        nw.Struct({"a": nw.Boolean}),
+        nw.Enum(["beluga", "narwhal"]),
+    ],
+    ids=lambda obj: type(obj).__name__,
+)
+def nested_dtype(request: pytest.FixtureRequest) -> NestedOrEnumDType:
+    dtype: NestedOrEnumDType = request.param
+    return dtype
